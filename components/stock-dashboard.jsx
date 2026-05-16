@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { trackAnalyticsEvent } from "../lib/analytics";
+import { CandlestickChart } from "./trading-chart";
+import { FinancialsSection } from "./financials-section";
 
 const WATCHLIST_STORAGE_KEY = "market-current-watchlist";
 
@@ -51,6 +54,7 @@ function getChangeTone(change) {
   return "neutral";
 }
 
+
 export default function StockDashboard({ initialData }) {
   const [board, setBoard] = useState(initialData);
   const [watchlist, setWatchlist] = useState({});
@@ -62,6 +66,12 @@ export default function StockDashboard({ initialData }) {
   const [isSearchingSymbols, setIsSearchingSymbols] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [watchlistMessage, setWatchlistMessage] = useState("");
+  const [selectedStock, setSelectedStock] = useState(null);
+  const [recommendationData, setRecommendationData] = useState(null);
+  const [isLoadingRecommendation, setIsLoadingRecommendation] = useState(false);
+  const [recommendationError, setRecommendationError] = useState("");
+  const [chartRange, setChartRange] = useState("1m");
+  const [isLoadingChart, setIsLoadingChart] = useState(false);
 
   useEffect(() => {
     try {
@@ -287,6 +297,84 @@ export default function StockDashboard({ initialData }) {
     setWatchlistMessage("");
   }
 
+  async function handleRangeChange(range) {
+    if (!selectedStock || range === chartRange || isLoadingChart) return;
+    setChartRange(range);
+    setIsLoadingChart(true);
+    try {
+      const response = await fetch(
+        `/api/analytics?symbol=${encodeURIComponent(selectedStock.symbol)}&range=${range}&skipFundamentals=true`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) throw new Error("Unable to fetch chart data");
+      const data = await response.json();
+      setRecommendationData(prev => ({
+        ...prev,
+        history: data.history,
+        chartRange: data.chartRange
+      }));
+    } catch {
+      // keep existing chart data on error
+    } finally {
+      setIsLoadingChart(false);
+    }
+  }
+
+  async function loadStockRecommendation(stock) {
+    setSelectedStock(stock);
+    setChartRange("1m");
+    setIsLoadingRecommendation(true);
+    setRecommendationError("");
+    setRecommendationData(null);
+
+    // Track the click event
+    trackAnalyticsEvent("stock_clicked", {
+      symbol: stock.symbol,
+      name: stock.shortName,
+      price: stock.regularMarketPrice,
+      change: stock.marketChangePercent
+    });
+
+    try {
+      const response = await fetch(`/api/analytics?symbol=${encodeURIComponent(stock.symbol)}`);
+      
+      if (!response.ok) {
+        throw new Error("Unable to fetch recommendation");
+      }
+
+      const data = await response.json();
+      setRecommendationData({
+        ...data.analysis,
+        history: data.history,
+        chartRange: data.chartRange,
+        fundamentals: data.fundamentals
+      });
+      
+      // Track successful recommendation view
+      trackAnalyticsEvent("recommendation_viewed", {
+        symbol: stock.symbol,
+        recommendation: data.analysis.recommendation,
+        confidence: data.analysis.confidence
+      });
+    } catch (error) {
+      setRecommendationError(
+        error instanceof Error ? error.message : "Unable to load recommendation"
+      );
+      trackAnalyticsEvent("recommendation_error", {
+        symbol: stock.symbol,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    } finally {
+      setIsLoadingRecommendation(false);
+    }
+  }
+
+  function closeRecommendation() {
+    setSelectedStock(null);
+    setRecommendationData(null);
+    setRecommendationError("");
+  }
+
   return (
     <main className="page-shell">
       <section className="hero-panel">
@@ -401,6 +489,13 @@ export default function StockDashboard({ initialData }) {
                       </strong>
                     </div>
                   </div>
+
+                  <button
+                    className="view-analysis-button"
+                    onClick={() => loadStockRecommendation(stock)}
+                  >
+                    View Analysis & Recommendation →
+                  </button>
                 </article>
               );
             })}
@@ -528,6 +623,103 @@ export default function StockDashboard({ initialData }) {
           )}
         </aside>
       </section>
+
+      {selectedStock && (
+        <div className="recommendation-modal-overlay" onClick={closeRecommendation}>
+          <div className="recommendation-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="recommendation-header">
+              <div>
+                <h2>{selectedStock.symbol}</h2>
+                <p>{selectedStock.shortName}</p>
+              </div>
+              <button className="close-button" onClick={closeRecommendation}>✕</button>
+            </div>
+
+            {isLoadingRecommendation ? (
+              <div className="recommendation-loading">
+                <p>Analyzing stock data...</p>
+              </div>
+            ) : recommendationError ? (
+              <div className="recommendation-error">
+                <p>⚠️ {recommendationError}</p>
+              </div>
+            ) : recommendationData ? (
+              <div className="recommendation-content">
+                <CandlestickChart
+                  history={recommendationData.history || []}
+                  currentRange={chartRange}
+                  onRangeChange={handleRangeChange}
+                  isLoading={isLoadingChart}
+                />
+
+                <div className="recommendation-score">
+                  <div className={`recommendation-badge ${recommendationData.recommendation.toLowerCase()}`}>
+                    {recommendationData.recommendation}
+                  </div>
+                  <div className="score-details">
+                    <span className="score-label">Confidence</span>
+                    <span className={`score-value ${recommendationData.confidence}`}>
+                      {recommendationData.confidence.toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="score-bar">
+                    <div className="score-bar-fill" style={{ width: `${recommendationData.score}%` }}></div>
+                    <span className="score-number">{recommendationData.score}</span>
+                  </div>
+                </div>
+
+                <div className="recommendation-reasoning">
+                  <h3>Analysis</h3>
+                  <p>{recommendationData.reasoning}</p>
+                </div>
+
+                {recommendationData.signals.length > 0 && (
+                  <div className="recommendation-signals">
+                    <h3>Key Signals</h3>
+                    <ul>
+                      {recommendationData.signals.map((signal, idx) => (
+                        <li key={idx}>• {signal}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="recommendation-metrics">
+                  <h3>Stock Metrics</h3>
+                  <div className="metrics-grid">
+                    <div className="metric">
+                      <span>Current Price</span>
+                      <strong>{formatMoney(recommendationData.indicators.price)}</strong>
+                    </div>
+                    <div className="metric">
+                      <span>Day Change</span>
+                      <strong className={getChangeTone(recommendationData.indicators.dayChange) === "up" ? "up" : "down"}>
+                        {formatPercent(recommendationData.indicators.dayChange)}
+                      </strong>
+                    </div>
+                    <div className="metric">
+                      <span>Volume</span>
+                      <strong>{formatCompact(recommendationData.indicators.volume)}</strong>
+                    </div>
+                    {recommendationData.indicators.pe && (
+                      <div className="metric">
+                        <span>P/E Ratio</span>
+                        <strong>{recommendationData.indicators.pe.toFixed(2)}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <FinancialsSection fundamentals={recommendationData.fundamentals} />
+
+                <div className="recommendation-disclaimer">
+                  <p>💡 This is an automated analysis for educational purposes only. Always do your own research before making investment decisions.</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
