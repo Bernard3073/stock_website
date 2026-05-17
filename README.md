@@ -59,6 +59,11 @@ Clicking **View Analysis & Recommendation** on any stock opens a detailed panel 
   - **1W / 1M / 3M** range tabs that refetch only the chart payload
 - **Buy / Sell / Hold recommendation** with a confidence score and the underlying signals
   ([lib/analytics.js](lib/analytics.js)).
+- **Analyst Insights** ([components/analyst-insights.jsx](components/analyst-insights.jsx))
+  - Recommendation badge: Strong Buy / Buy / Hold / Underperform / Sell
+  - 1.0–5.0 average rating gauge with the mean position marked on a colored scale
+  - Price-target bar — low / current / mean target / high, with % upside to the mean
+  - Distribution chart showing how many analysts are in each rating bucket this month
 - **Income Statement & Earnings** ([components/financials-section.jsx](components/financials-section.jsx))
   - Annual revenue & net income bar chart (4 fiscal years)
   - Quarterly EPS table — estimate vs. actual with color-coded surprise %
@@ -101,6 +106,7 @@ components/
   stock-dashboard.jsx       Main board + watchlist + analysis modal
   top-bar.jsx               Sticky nav with Watchlist / Top Gainers / Most Active menus
   trading-chart.jsx         Candlestick + SMA + Volume + RSI SVG chart
+  analyst-insights.jsx      Analyst rating badge, rating gauge, price targets, distribution
   financials-section.jsx    Revenue/earnings chart, EPS table, income statement table
 lib/
   stocks.js                 Yahoo Finance data layer (quotes, history, fundamentals)
@@ -130,11 +136,12 @@ All data comes directly from Yahoo Finance's public endpoints; no API key is req
   (falls back to a derived sort of the trending board if the screener errors)
 - **Chart / OHLC history:** `query1.finance.yahoo.com/v8/finance/chart/<symbol>`
 - **Symbol search:** `query1.finance.yahoo.com/v1/finance/search`
-- **Fundamentals (income statement + earnings):**
-  `query1.finance.yahoo.com/v10/finance/quoteSummary/<symbol>` — requires a crumb/cookie
-  pair which is fetched and cached for an hour. If the auth fails for any reason the
-  modal gracefully shows "data unavailable" for the financials section while the rest of
-  the analysis continues to work.
+- **Fundamentals + analyst data:**
+  `query1.finance.yahoo.com/v10/finance/quoteSummary/<symbol>` with modules
+  `incomeStatementHistory,earnings,earningsHistory,financialData,recommendationTrend` —
+  requires a crumb/cookie pair which is fetched and cached for an hour. If the auth fails
+  the modal gracefully hides the analyst and financials sections while the rest of the
+  analysis continues to work.
 - **Headlines:** Google News RSS, queried per ticker.
 
 ## Notes

@@ -5,6 +5,7 @@ import { trackAnalyticsEvent } from "../lib/analytics";
 import { CandlestickChart } from "./trading-chart";
 import { FinancialsSection } from "./financials-section";
 import { TopBar } from "./top-bar";
+import { AnalystInsights } from "./analyst-insights";
 
 const WATCHLIST_STORAGE_KEY = "market-current-watchlist";
 const DEVICE_ID_KEY = "market-current-device-id";
@@ -844,6 +845,8 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                     )}
                   </div>
                 </div>
+
+                <AnalystInsights analyst={recommendationData.fundamentals?.analystInsights} />
 
                 <FinancialsSection fundamentals={recommendationData.fundamentals} />
 
