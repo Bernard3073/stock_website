@@ -58,14 +58,30 @@ function fmtVol(v) {
   return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(v);
 }
 
-function fmtDate(ts) {
-  return new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+function fmtDate(ts, range = "1mo") {
+  const d = new Date(ts);
+  if (range === "1d") {
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  if (range === "5d") {
+    return d.toLocaleDateString("en-US", { weekday: "short", hour: "numeric" });
+  }
+  if (range === "5y" || range === "max") {
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 const RANGES = [
-  { label: "1W", value: "1w" },
-  { label: "1M", value: "1m" },
-  { label: "3M", value: "3m" },
+  { label: "1D", value: "1d" },
+  { label: "1W", value: "5d" },
+  { label: "1M", value: "1mo" },
+  { label: "3M", value: "3mo" },
+  { label: "6M", value: "6mo" },
+  { label: "YTD", value: "ytd" },
+  { label: "1Y", value: "1y" },
+  { label: "5Y", value: "5y" },
+  { label: "All", value: "max" }
 ];
 
 export function CandlestickChart({ history, currentRange, onRangeChange, isLoading }) {
@@ -134,8 +150,8 @@ export function CandlestickChart({ history, currentRange, onRangeChange, isLoadi
     const idxs = [];
     for (let i = 0; i < n; i += step) idxs.push(i);
     if (idxs[idxs.length - 1] !== n - 1) idxs.push(n - 1);
-    return idxs.map(i => ({ label: fmtDate(history[i].time), x: xOf(i) }));
-  }, [history, n, xOf]);
+    return idxs.map(i => ({ label: fmtDate(history[i].time, currentRange), x: xOf(i) }));
+  }, [history, n, xOf, currentRange]);
 
   function handleMouseMove(e) {
     const svg = svgRef.current;
@@ -169,7 +185,7 @@ export function CandlestickChart({ history, currentRange, onRangeChange, isLoadi
         <div className="chart-ohlc-bar">
           {hovered ? (
             <>
-              <span className="ohlc-date">{fmtDate(hovered.time)}</span>
+              <span className="ohlc-date">{fmtDate(hovered.time, currentRange)}</span>
               <span>O <strong>{fmtPrice(hovered.open)}</strong></span>
               <span>H <strong>{fmtPrice(hovered.high)}</strong></span>
               <span>L <strong>{fmtPrice(hovered.low)}</strong></span>

@@ -7,14 +7,29 @@ export default async function handler(request, response) {
     return response.status(405).json({ message: "Method not allowed" });
   }
 
+  const ALLOWED_RANGES = new Set([
+    "1d",
+    "5d",
+    "1mo",
+    "3mo",
+    "6mo",
+    "ytd",
+    "1y",
+    "5y",
+    "max"
+  ]);
+
   const symbol = typeof request.query.symbol === "string" ? request.query.symbol : "";
-  const rangeKey = typeof request.query.range === "string" ? request.query.range : "1m";
-  const rangeMap = { "1w": "5d", "1m": "1mo", "3m": "3mo" };
-  const yRange = rangeMap[rangeKey] || "1mo";
+  const requested = typeof request.query.range === "string" ? request.query.range : "";
+  const yRange = ALLOWED_RANGES.has(requested) ? requested : "1mo";
   const skipFundamentals = request.query.skipFundamentals === "true";
+  const skipNews = request.query.skipNews === "true";
 
   try {
-    const payload = await getStockQuoteWithHistory(symbol, yRange, { skipFundamentals });
+    const payload = await getStockQuoteWithHistory(symbol, yRange, {
+      skipFundamentals,
+      skipNews
+    });
     const analysis = generateRecommendation(payload.stock);
 
     return response.status(200).json({
@@ -24,7 +39,8 @@ export default async function handler(request, response) {
       stock: payload.stock,
       history: payload.history,
       chartRange: payload.chartRange,
-      fundamentals: payload.fundamentals ?? null
+      fundamentals: payload.fundamentals ?? null,
+      news: payload.news ?? null
     });
   } catch (error) {
     return response.status(404).json({

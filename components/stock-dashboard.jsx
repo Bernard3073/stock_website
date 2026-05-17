@@ -106,7 +106,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   const [recommendationData, setRecommendationData] = useState(null);
   const [isLoadingRecommendation, setIsLoadingRecommendation] = useState(false);
   const [recommendationError, setRecommendationError] = useState("");
-  const [chartRange, setChartRange] = useState("1m");
+  const [chartRange, setChartRange] = useState("1mo");
   const [isLoadingChart, setIsLoadingChart] = useState(false);
   const [deviceId, setDeviceId] = useState("");
   const [isWatchlistHydrated, setIsWatchlistHydrated] = useState(false);
@@ -252,6 +252,22 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
     });
   }, [board.stocks, query]);
 
+  const groupedStocks = useMemo(() => {
+    const groups = new Map();
+    for (const stock of visibleStocks) {
+      const key = stock.industry || stock.sector || "Uncategorized";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(stock);
+    }
+    return Array.from(groups.entries())
+      .sort((a, b) => {
+        if (a[0] === "Uncategorized") return 1;
+        if (b[0] === "Uncategorized") return -1;
+        return b[1].length - a[1].length;
+      })
+      .map(([name, stocks]) => ({ name, stocks }));
+  }, [visibleStocks]);
+
   const watchlistItems = useMemo(() => {
     return Object.entries(watchlist)
       .map(([symbol, entry]) => {
@@ -279,29 +295,22 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
     }));
   }, [watchlistItems]);
 
-  const boardNews = useMemo(() => board.news || [], [board.news]);
+  const hotNews = useMemo(() => board.news || [], [board.news]);
 
-  const marketSummary = useMemo(() => {
-    const pricedStocks = board.stocks.filter(
-      (stock) => typeof stock.regularMarketPrice === "number"
-    );
-    const gainers = board.stocks.filter(
-      (stock) => typeof stock.marketChangePercent === "number" && stock.marketChangePercent > 0
-    );
+  const sidebarTrending = useMemo(() => board.stocks.slice(0, 5), [board.stocks]);
+  const sidebarGainers = useMemo(() => (topGainers || []).slice(0, 5), [topGainers]);
 
-    const averageMove = gainers.length
-      ? gainers.reduce((sum, stock) => sum + stock.marketChangePercent, 0) / gainers.length
-      : 0;
-
-    return {
-      trackedCount: board.stocks.length,
-      gainers: gainers.length,
-      averageMove,
-      averagePrice: pricedStocks.length
-        ? pricedStocks.reduce((sum, stock) => sum + stock.regularMarketPrice, 0) / pricedStocks.length
-        : 0
-    };
-  }, [board.stocks]);
+  const tickerStocks = useMemo(() => {
+    const seen = new Set();
+    const combined = [];
+    for (const stock of [...board.stocks, ...(topGainers || []), ...(mostActives || [])]) {
+      if (!stock || !stock.symbol || seen.has(stock.symbol)) continue;
+      if (typeof stock.regularMarketPrice !== "number") continue;
+      seen.add(stock.symbol);
+      combined.push(stock);
+    }
+    return combined;
+  }, [board.stocks, topGainers, mostActives]);
 
   async function refreshBoard() {
     setIsRefreshing(true);
@@ -429,7 +438,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
     setIsLoadingChart(true);
     try {
       const response = await fetch(
-        `/api/analytics?symbol=${encodeURIComponent(selectedStock.symbol)}&range=${range}&skipFundamentals=true`,
+        `/api/analytics?symbol=${encodeURIComponent(selectedStock.symbol)}&range=${range}&skipFundamentals=true&skipNews=true`,
         { cache: "no-store" }
       );
       if (!response.ok) throw new Error("Unable to fetch chart data");
@@ -448,7 +457,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
 
   async function loadStockRecommendation(stock) {
     setSelectedStock(stock);
-    setChartRange("1m");
+    setChartRange("1mo");
     setIsLoadingRecommendation(true);
     setRecommendationError("");
     setRecommendationData(null);
@@ -473,7 +482,8 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
         ...data.analysis,
         history: data.history,
         chartRange: data.chartRange,
-        fundamentals: data.fundamentals
+        fundamentals: data.fundamentals,
+        news: data.news || []
       });
       
       // Track successful recommendation view
@@ -539,28 +549,83 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
         </div>
       </section>
 
-      <section className="summary-grid">
-        <article className="summary-card accent-orange">
-          <span>Tracked symbols</span>
-          <strong>{marketSummary.trackedCount}</strong>
-          <p>Fresh symbols pulled into today&apos;s board.</p>
-        </article>
-        <article className="summary-card accent-cream">
-          <span>Positive movers</span>
-          <strong>{marketSummary.gainers}</strong>
-          <p>Names printing green inside the current list.</p>
-        </article>
-        <article className="summary-card accent-teal">
-          <span>Average gain</span>
-          <strong>{formatPercent(marketSummary.averageMove)}</strong>
-          <p>Average move for the symbols showing upside.</p>
-        </article>
-        <article className="summary-card accent-ink">
-          <span>Average price</span>
-          <strong>{formatMoney(marketSummary.averagePrice)}</strong>
-          <p>Price anchor across the active board.</p>
-        </article>
-      </section>
+      {tickerStocks.length > 0 && (
+        <section className="stock-ticker" aria-label="Live stock ticker">
+          <div className="stock-ticker-track">
+            {[...tickerStocks, ...tickerStocks].map((stock, index) => (
+              <button
+                key={`${stock.symbol}-${index}`}
+                type="button"
+                className="ticker-item"
+                onClick={() => loadStockRecommendation(stock)}
+              >
+                <span className="ticker-symbol">{stock.symbol}</span>
+                <span className="ticker-price">{formatMoney(stock.regularMarketPrice)}</span>
+                <span className={`ticker-change ${getChangeTone(stock.marketChangePercent)}`}>
+                  {formatPercent(stock.marketChangePercent)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {hotNews.length > 0 && (
+        <section className="hot-news" aria-label="Latest hot news">
+          <div className="section-heading compact">
+            <div>
+              <p className="eyebrow">Headlines now</p>
+              <h2>Latest hot news</h2>
+            </div>
+            <p className="section-meta">
+              {hotNews.length} {hotNews.length === 1 ? "story" : "stories"} across trending tickers
+            </p>
+          </div>
+          <div className="hot-news-grid">
+            {hotNews.map((item, idx) => {
+              const matchingStock = board.stocks.find((s) => s.symbol === item.symbol);
+              const stockForModal = matchingStock || {
+                symbol: item.symbol,
+                shortName: item.symbol
+              };
+              const tone = matchingStock
+                ? getChangeTone(matchingStock.marketChangePercent)
+                : "neutral";
+              return (
+                <article className="hot-news-card" key={`${item.symbol}-${item.link}-${idx}`}>
+                  <div className="hot-news-card-top">
+                    <button
+                      type="button"
+                      className={`hot-news-chip ${tone}`}
+                      onClick={() => loadStockRecommendation(stockForModal)}
+                      title={`Open analysis for ${item.symbol}`}
+                    >
+                      {item.symbol}
+                      {matchingStock ? (
+                        <span className="hot-news-chip-move">
+                          {formatPercent(matchingStock.marketChangePercent)}
+                        </span>
+                      ) : null}
+                    </button>
+                    <span className="hot-news-source">
+                      {item.source}
+                      {item.publishedAt ? ` · ${item.publishedAt}` : ""}
+                    </span>
+                  </div>
+                  <a
+                    className="hot-news-title"
+                    href={item.link}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {item.title}
+                  </a>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="content-grid">
         <div className="board-column">
@@ -579,85 +644,83 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
             </p>
           </div>
 
-          <div className="stock-grid">
-            {visibleStocks.map((stock) => {
-              const isTracked = Boolean(watchlist[stock.symbol]);
-              const tone = getChangeTone(stock.marketChangePercent);
+          <div className="industry-groups">
+            {groupedStocks.map((group) => (
+              <section className="industry-group" key={group.name}>
+                <div className="industry-group-header">
+                  <h3>{group.name}</h3>
+                  <span className="industry-group-count">
+                    {group.stocks.length} {group.stocks.length === 1 ? "stock" : "stocks"}
+                  </span>
+                </div>
+                <div className="stock-grid">
+                  {group.stocks.map((stock) => {
+                    const isTracked = Boolean(watchlist[stock.symbol]);
+                    const tone = getChangeTone(stock.marketChangePercent);
 
-              return (
-                <article className="stock-card" key={stock.symbol}>
-                  <div className="stock-card-top">
-                    <div>
-                      <div className="stock-symbol-row">
-                        <span className="stock-rank">#{stock.rank}</span>
-                        <h3>{stock.symbol}</h3>
-                      </div>
-                      <p className="stock-name">{stock.shortName}</p>
-                    </div>
+                    function handleCardKeyDown(event) {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        loadStockRecommendation(stock);
+                      }
+                    }
 
-                    <button
-                      className={`track-button ${isTracked ? "tracked" : ""}`}
-                      onClick={() => toggleWatchlist(stock.symbol)}
-                    >
-                      {isTracked ? "Tracking" : "Track"}
-                    </button>
-                  </div>
+                    return (
+                      <article
+                        className="stock-card"
+                        key={stock.symbol}
+                        onClick={() => loadStockRecommendation(stock)}
+                        onKeyDown={handleCardKeyDown}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open analysis for ${stock.symbol} ${stock.shortName}`}
+                      >
+                        <div className="stock-card-top">
+                          <div>
+                            <div className="stock-symbol-row">
+                              <span className="stock-rank">#{stock.rank}</span>
+                              <h3>{stock.symbol}</h3>
+                            </div>
+                            <p className="stock-name">{stock.shortName}</p>
+                          </div>
 
-                  <div className="price-row">
-                    <strong>{formatMoney(stock.regularMarketPrice)}</strong>
-                    <span className={`change-pill ${tone}`}>
-                      {formatPercent(stock.marketChangePercent)}
-                    </span>
-                  </div>
+                          <button
+                            className={`track-button ${isTracked ? "tracked" : ""}`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleWatchlist(stock.symbol);
+                            }}
+                          >
+                            {isTracked ? "Tracking" : "Track"}
+                          </button>
+                        </div>
 
-                  <div className="metric-row">
-                    <div>
-                      <span>Volume</span>
-                      <strong>{formatCompact(stock.regularMarketVolume)}</strong>
-                    </div>
-                    <div>
-                      <span>Day range</span>
-                      <strong>
-                        {formatMoney(stock.regularMarketDayLow)} - {formatMoney(stock.regularMarketDayHigh)}
-                      </strong>
-                    </div>
-                  </div>
+                        <div className="price-row">
+                          <strong>{formatMoney(stock.regularMarketPrice)}</strong>
+                          <span className={`change-pill ${tone}`}>
+                            {formatPercent(stock.marketChangePercent)}
+                          </span>
+                        </div>
 
-                  <button
-                    className="view-analysis-button"
-                    onClick={() => loadStockRecommendation(stock)}
-                  >
-                    View Analysis & Recommendation →
-                  </button>
-                </article>
-              );
-            })}
+                        <div className="metric-row">
+                          <div>
+                            <span>Volume</span>
+                            <strong>{formatCompact(stock.regularMarketVolume)}</strong>
+                          </div>
+                          <div>
+                            <span>Day range</span>
+                            <strong>
+                              {formatMoney(stock.regularMarketDayLow)} - {formatMoney(stock.regularMarketDayHigh)}
+                            </strong>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
-
-          <section className="news-panel">
-            <div className="section-heading compact news-heading">
-              <div>
-                <p className="eyebrow">Market headlines</p>
-                <h2>Daily news for trending stocks</h2>
-              </div>
-            </div>
-
-            <div className="news-stack">
-              {boardNews.map((item) => (
-                <article className="news-card" key={`${item.symbol}-${item.link}`}>
-                  <div className="news-symbol">{item.symbol}</div>
-                  <div>
-                    <a className="news-link" href={item.link} target="_blank" rel="noreferrer">
-                      {item.title}
-                    </a>
-                    <p className="news-meta">
-                      {item.source} · {item.publishedAt}
-                    </p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
         </div>
 
         <aside className="watchlist-column">
@@ -757,6 +820,56 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
               ))}
             </div>
           )}
+
+          {sidebarTrending.length > 0 && (
+            <section className="sidebar-list-section">
+              <div className="sidebar-list-header">
+                <h3>Trending</h3>
+                <span className="sidebar-list-meta">Top {sidebarTrending.length}</span>
+              </div>
+              <div className="sidebar-stock-list">
+                {sidebarTrending.map((stock) => (
+                  <button
+                    key={stock.symbol}
+                    type="button"
+                    className="sidebar-stock-row"
+                    onClick={() => loadStockRecommendation(stock)}
+                  >
+                    <span className="sidebar-stock-symbol">{stock.symbol}</span>
+                    <span className="sidebar-stock-name">{stock.shortName}</span>
+                    <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
+                      {formatPercent(stock.marketChangePercent)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {sidebarGainers.length > 0 && (
+            <section className="sidebar-list-section">
+              <div className="sidebar-list-header">
+                <h3>Top Gainers</h3>
+                <span className="sidebar-list-meta">Top {sidebarGainers.length}</span>
+              </div>
+              <div className="sidebar-stock-list">
+                {sidebarGainers.map((stock) => (
+                  <button
+                    key={stock.symbol}
+                    type="button"
+                    className="sidebar-stock-row"
+                    onClick={() => loadStockRecommendation(stock)}
+                  >
+                    <span className="sidebar-stock-symbol">{stock.symbol}</span>
+                    <span className="sidebar-stock-name">{stock.shortName}</span>
+                    <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
+                      {formatPercent(stock.marketChangePercent)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
       </section>
 
@@ -787,22 +900,6 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                   onRangeChange={handleRangeChange}
                   isLoading={isLoadingChart}
                 />
-
-                <div className="recommendation-score">
-                  <div className={`recommendation-badge ${recommendationData.recommendation.toLowerCase()}`}>
-                    {recommendationData.recommendation}
-                  </div>
-                  <div className="score-details">
-                    <span className="score-label">Confidence</span>
-                    <span className={`score-value ${recommendationData.confidence}`}>
-                      {recommendationData.confidence.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="score-bar">
-                    <div className="score-bar-fill" style={{ width: `${recommendationData.score}%` }}></div>
-                    <span className="score-number">{recommendationData.score}</span>
-                  </div>
-                </div>
 
                 <div className="recommendation-reasoning">
                   <h3>Analysis</h3>
@@ -853,6 +950,34 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                 <div className="recommendation-disclaimer">
                   <p>💡 This is an automated analysis for educational purposes only. Always do your own research before making investment decisions.</p>
                 </div>
+
+                {recommendationData.news && recommendationData.news.length > 0 && (
+                  <div className="modal-news-section">
+                    <div className="modal-news-header">
+                      <h3>Latest News</h3>
+                      <span className="modal-news-count">
+                        {recommendationData.news.length} {recommendationData.news.length === 1 ? "headline" : "headlines"}
+                      </span>
+                    </div>
+                    <div className="modal-news-list">
+                      {recommendationData.news.map((item, idx) => (
+                        <a
+                          key={`${item.link || idx}-${idx}`}
+                          href={item.link}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="modal-news-item"
+                        >
+                          <span className="modal-news-title">{item.title}</span>
+                          <span className="modal-news-meta">
+                            {item.source}
+                            {item.publishedAt ? ` · ${item.publishedAt}` : ""}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : null}
           </div>

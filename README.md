@@ -18,13 +18,59 @@ nvm use 20
 
 ## Run locally
 
+### First-time setup
+
 ```bash
+nvm use 20          # only needed once per new terminal session
+npm install         # installs dependencies (also after package.json changes)
+npm run dev         # starts the dev server at http://localhost:3000
+```
+
+Leave `npm run dev` running while you work — Next.js hot-reloads on every save, so
+**you do not need to re-run anything** when you edit code. Just refresh the browser.
+
+If you want `nvm` to default to Node 20 in every new shell so you can skip the
+`nvm use 20` step, run `nvm alias default 20` once.
+
+### Workflow cheat sheet
+
+| You changed...                  | You need to run...                         |
+| ------------------------------- | ------------------------------------------ |
+| A `.jsx` / `.js` / `.css` file  | Nothing — hot reload handles it            |
+| `package.json` (new dependency) | `npm install`                              |
+| `next.config.js`                | Restart `npm run dev`                      |
+| Nothing, but it's broken/cached | `rm -rf .next` and restart `npm run dev`   |
+| Want a production bundle        | `npm run build` then `npm start`           |
+
+### Production build
+
+```bash
+nvm use 20
+npm run build       # type-checks and bundles for production
+npm start           # serves the production build at :3000
+```
+
+Always run `npm run build` before deploying — it surfaces build-time errors that
+the dev server can quietly ignore.
+
+### When things look broken
+
+If you hit weird cache errors (especially after switching branches, native modules
+recompiling, or interrupted installs), reset the local state:
+
+```bash
+rm -rf .next node_modules package-lock.json
 npm install
 npm run dev
 ```
 
-The dev server boots at <http://localhost:3000>. A production build can be produced with
-`npm run build` and served with `npm start`.
+### Do not run `npm audit fix --force`
+
+`--force` allows npm to downgrade **major versions** to make audit warnings go
+away — on this project it will silently roll Next.js back to a 6-year-old release
+and break everything. The "vulnerability" warnings on a clean install come from
+transitive dev-only dependencies of Next.js itself; they are not exploitable in
+your code and are tracked upstream. Plain `npm audit fix` (no flag) is safe.
 
 ## What it includes
 
@@ -44,8 +90,16 @@ the dropdowns are never empty.
 ### Daily market board
 - Server-side Yahoo Finance fetch of trending US tickers via `getServerSideProps`.
 - Curated fallback list when the live feed is unreachable.
-- Per-symbol headlines pulled from Google News RSS for the top trending stocks.
+- Each stock card is fully clickable (and keyboard-focusable with Enter/Space) —
+  clicking anywhere on a card opens the full analysis modal with the chart,
+  recommendation, analyst insights, income statement, and the latest 6 news
+  headlines. The Track button stays on the card and doesn't trigger the modal.
 - Type-ahead symbol search backed by Yahoo Finance's search endpoint.
+
+### Right sidebar
+- **Watchlist** with notes — synced live to the SQLite database (see Watchlist persistence below).
+- **Trending** preview — the top 5 trending tickers from the board, click to open the analysis modal.
+- **Top Gainers** preview — top 5 movers from the Yahoo `day_gainers` screener.
 
 ### Stock analysis modal
 Clicking **View Analysis & Recommendation** on any stock opens a detailed panel containing:
@@ -59,6 +113,9 @@ Clicking **View Analysis & Recommendation** on any stock opens a detailed panel 
   - **1W / 1M / 3M** range tabs that refetch only the chart payload
 - **Buy / Sell / Hold recommendation** with a confidence score and the underlying signals
   ([lib/analytics.js](lib/analytics.js)).
+- **Latest News** (at the bottom of the modal) — up to 6 fresh headlines for the
+  selected symbol pulled from Google News RSS at modal-open time. Range tab switches
+  don't refetch the headlines (the chart is re-fetched with `skipNews=true`).
 - **Analyst Insights** ([components/analyst-insights.jsx](components/analyst-insights.jsx))
   - Recommendation badge: Strong Buy / Buy / Hold / Underperform / Sell
   - 1.0–5.0 average rating gauge with the mean position marked on a colored scale
