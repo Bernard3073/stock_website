@@ -1,11 +1,46 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trackAnalyticsEvent } from "../lib/analytics";
 import { CandlestickChart } from "./trading-chart";
 import { FinancialsSection } from "./financials-section";
+import { TopBar } from "./top-bar";
 
 const WATCHLIST_STORAGE_KEY = "market-current-watchlist";
+const DEVICE_ID_KEY = "market-current-device-id";
+const SYNC_DEBOUNCE_MS = 600;
+
+function getOrCreateDeviceId() {
+  if (typeof window === "undefined") return "";
+  let id = window.localStorage.getItem(DEVICE_ID_KEY);
+  if (!id) {
+    id = (typeof crypto !== "undefined" && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    window.localStorage.setItem(DEVICE_ID_KEY, id);
+  }
+  return id;
+}
+
+function watchlistObjectToArray(map) {
+  return Object.entries(map).map(([symbol, entry]) => ({
+    symbol,
+    note: entry?.note || "",
+    addedAt: entry?.addedAt || new Date().toISOString()
+  }));
+}
+
+function watchlistArrayToObject(items) {
+  const result = {};
+  for (const item of items) {
+    if (!item?.symbol) continue;
+    result[item.symbol] = {
+      note: item.note || "",
+      addedAt: item.addedAt || new Date().toISOString()
+    };
+  }
+  return result;
+}
 
 function formatMoney(value) {
   if (typeof value !== "number") {
@@ -55,7 +90,7 @@ function getChangeTone(change) {
 }
 
 
-export default function StockDashboard({ initialData }) {
+export default function StockDashboard({ initialData, topGainers = [], mostActives = [] }) {
   const [board, setBoard] = useState(initialData);
   const [watchlist, setWatchlist] = useState({});
   const [query, setQuery] = useState("");
@@ -72,22 +107,100 @@ export default function StockDashboard({ initialData }) {
   const [recommendationError, setRecommendationError] = useState("");
   const [chartRange, setChartRange] = useState("1m");
   const [isLoadingChart, setIsLoadingChart] = useState(false);
+  const [deviceId, setDeviceId] = useState("");
+  const [isWatchlistHydrated, setIsWatchlistHydrated] = useState(false);
+  const [watchlistSyncStatus, setWatchlistSyncStatus] = useState("");
+  const syncTimerRef = useRef(null);
+  const skipNextSyncRef = useRef(true);
 
   useEffect(() => {
-    try {
-      const rawValue = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
+    const id = getOrCreateDeviceId();
+    setDeviceId(id);
 
-      if (rawValue) {
-        setWatchlist(JSON.parse(rawValue));
-      }
+    let cancelled = false;
+    let localCache = {};
+    try {
+      const raw = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
+      if (raw) localCache = JSON.parse(raw) || {};
     } catch {
-      setWatchlist({});
+      localCache = {};
     }
+
+    async function hydrate() {
+      try {
+        const response = await fetch("/api/watchlist", {
+          headers: { "x-device-id": id },
+          cache: "no-store"
+        });
+        if (!response.ok) throw new Error("server unavailable");
+        const payload = await response.json();
+        const serverItems = Array.isArray(payload.items) ? payload.items : [];
+
+        if (cancelled) return;
+
+        if (serverItems.length > 0) {
+          skipNextSyncRef.current = true;
+          setWatchlist(watchlistArrayToObject(serverItems));
+        } else if (Object.keys(localCache).length > 0) {
+          setWatchlist(localCache);
+          await fetch("/api/watchlist", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json", "x-device-id": id },
+            body: JSON.stringify({ entries: watchlistObjectToArray(localCache) })
+          }).catch(() => {});
+        } else {
+          skipNextSyncRef.current = true;
+          setWatchlist({});
+        }
+      } catch {
+        if (cancelled) return;
+        skipNextSyncRef.current = true;
+        setWatchlist(localCache);
+      } finally {
+        if (!cancelled) setIsWatchlistHydrated(true);
+      }
+    }
+
+    hydrate();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist));
-  }, [watchlist]);
+    if (!isWatchlistHydrated) return;
+    try {
+      window.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist));
+    } catch {
+      // localStorage may be full or disabled
+    }
+  }, [watchlist, isWatchlistHydrated]);
+
+  useEffect(() => {
+    if (!isWatchlistHydrated || !deviceId) return;
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false;
+      return;
+    }
+
+    if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+
+    syncTimerRef.current = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/watchlist", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "x-device-id": deviceId },
+          body: JSON.stringify({ entries: watchlistObjectToArray(watchlist) })
+        });
+        if (!response.ok) throw new Error("sync failed");
+        setWatchlistSyncStatus("Saved to your account");
+      } catch {
+        setWatchlistSyncStatus("Offline — changes saved locally");
+      }
+    }, SYNC_DEBOUNCE_MS);
+
+    return () => {
+      if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
+    };
+  }, [watchlist, isWatchlistHydrated, deviceId]);
 
   useEffect(() => {
     const normalizedSymbol = symbolInput.trim();
@@ -152,6 +265,18 @@ export default function StockDashboard({ initialData }) {
       })
       .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
   }, [board.stocks, watchlist]);
+
+  const watchlistStocks = useMemo(() => {
+    return watchlistItems.map((item) => ({
+      symbol: item.symbol,
+      shortName: item.stock?.shortName || item.symbol,
+      regularMarketPrice: item.stock?.regularMarketPrice,
+      marketChangePercent: item.stock?.marketChangePercent,
+      regularMarketVolume: item.stock?.regularMarketVolume,
+      regularMarketDayLow: item.stock?.regularMarketDayLow,
+      regularMarketDayHigh: item.stock?.regularMarketDayHigh
+    }));
+  }, [watchlistItems]);
 
   const boardNews = useMemo(() => board.news || [], [board.news]);
 
@@ -376,7 +501,14 @@ export default function StockDashboard({ initialData }) {
   }
 
   return (
-    <main className="page-shell">
+    <>
+      <TopBar
+        watchlistStocks={watchlistStocks}
+        topGainers={topGainers}
+        mostActives={mostActives}
+        onStockSelect={loadStockRecommendation}
+      />
+      <main className="page-shell" id="top">
       <section className="hero-panel">
         <div className="hero-copy">
           <p className="eyebrow">Daily market radar</p>
@@ -533,6 +665,9 @@ export default function StockDashboard({ initialData }) {
               <p className="eyebrow">Personal tracking</p>
               <h2>Watchlist</h2>
             </div>
+            {watchlistSyncStatus ? (
+              <span className="watchlist-sync-status">{watchlistSyncStatus}</span>
+            ) : null}
           </div>
 
           <form className="watchlist-form" onSubmit={addSymbolToWatchlist}>
@@ -720,6 +855,7 @@ export default function StockDashboard({ initialData }) {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }

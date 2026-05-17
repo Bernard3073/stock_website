@@ -28,11 +28,23 @@ The dev server boots at <http://localhost:3000>. A production build can be produ
 
 ## What it includes
 
+### Top bar
+A sticky top bar gives one-click access to three categories of stocks. Each is a
+dropdown that lists symbols, current price, and day change; clicking any row opens
+the full analysis modal for that stock.
+
+- **Watchlist** — the user's saved symbols (synced live from the server-side DB)
+- **Top Gainers** — top % movers today from Yahoo's `day_gainers` screener
+- **Most Active** — highest-volume tickers today from Yahoo's `most_actives` screener
+
+If the screener endpoint is unavailable, both lists transparently fall back to a
+sort of the trending board (by % change for gainers, by volume for most actives) so
+the dropdowns are never empty.
+
 ### Daily market board
 - Server-side Yahoo Finance fetch of trending US tickers via `getServerSideProps`.
 - Curated fallback list when the live feed is unreachable.
 - Per-symbol headlines pulled from Google News RSS for the top trending stocks.
-- Browser-saved watchlist with notes, persisted in `localStorage` across visits.
 - Type-ahead symbol search backed by Yahoo Finance's search endpoint.
 
 ### Stock analysis modal
@@ -57,16 +69,43 @@ Clicking **View Analysis & Recommendation** on any stock opens a detailed panel 
   via [lib/analytics.js](lib/analytics.js) — useful as a hook point if you later wire up a
   real analytics service.
 
+### Watchlist persistence
+The watchlist is now backed by a server-side SQLite database so symbols and notes survive
+clearing browser storage, switching browsers on the same device that gets the same device id,
+or any other case where `localStorage` is wiped.
+
+- **Storage:** [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) backed by a
+  single file at `data/market-current.db` (path overridable via `WATCHLIST_DB_PATH`).
+- **Identity:** Each browser generates an anonymous UUID on first load and stores it under
+  `market-current-device-id` in `localStorage`. The id is sent on every watchlist request via
+  the `x-device-id` header. No login required.
+- **Schema:** `watchlist_entries(device_id, symbol, note, added_at, updated_at)` with a
+  composite primary key on `(device_id, symbol)`.
+- **API:** [pages/api/watchlist.js](pages/api/watchlist.js) exposes:
+  - `GET /api/watchlist` — returns the device's saved entries
+  - `PUT /api/watchlist` with `{ entries: [...] }` — replaces the device's entries atomically
+- **Sync behavior:** On mount the client fetches server state; if the server is empty but
+  `localStorage` has a watchlist, the local copy is migrated up. After hydration, every
+  watchlist mutation triggers a debounced (600ms) PUT, with `localStorage` kept as an offline
+  cache. A small status pill in the watchlist header confirms each save.
+
+> The default SQLite file works perfectly for local dev and self-hosted deployments. **It will
+> not persist on Vercel** (their serverless functions run on a read-only filesystem); for
+> Vercel, swap `lib/db.js` for a managed provider like Vercel Postgres, Vercel KV, or
+> [Turso](https://turso.tech/) (libsql, drop-in API-compatible with better-sqlite3).
+
 ## Project layout
 
 ```
 components/
   stock-dashboard.jsx       Main board + watchlist + analysis modal
+  top-bar.jsx               Sticky nav with Watchlist / Top Gainers / Most Active menus
   trading-chart.jsx         Candlestick + SMA + Volume + RSI SVG chart
   financials-section.jsx    Revenue/earnings chart, EPS table, income statement table
 lib/
   stocks.js                 Yahoo Finance data layer (quotes, history, fundamentals)
   analytics.js              Recommendation scoring + client-side event logger
+  db.js                     SQLite (better-sqlite3) — watchlist persistence
 pages/
   index.js                  Home page (SSR'd trending board)
   _app.js                   App shell
@@ -75,8 +114,10 @@ pages/
     quote.js                /api/quote — single-symbol quote
     search.js               /api/search — symbol type-ahead
     analytics.js            /api/analytics — chart history + recommendation + fundamentals
+    watchlist.js            /api/watchlist — load / save per-device watchlist
 styles/
   globals.css               All styles (no CSS framework)
+data/                       SQLite database lives here (gitignored, auto-created)
 ```
 
 ## Data sources
@@ -84,6 +125,9 @@ styles/
 All data comes directly from Yahoo Finance's public endpoints; no API key is required.
 
 - **Trending list:** `query1.finance.yahoo.com/v1/finance/trending/US`
+- **Top gainers / most active:**
+  `query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers|most_actives`
+  (falls back to a derived sort of the trending board if the screener errors)
 - **Chart / OHLC history:** `query1.finance.yahoo.com/v8/finance/chart/<symbol>`
 - **Symbol search:** `query1.finance.yahoo.com/v1/finance/search`
 - **Fundamentals (income statement + earnings):**

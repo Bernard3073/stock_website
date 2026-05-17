@@ -1,2 +1,8 @@
 .next/
 node_modules/
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-wal
+*.db-shm
