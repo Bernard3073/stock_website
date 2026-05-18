@@ -296,6 +296,44 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   }, [watchlistItems]);
 
   const hotNews = useMemo(() => board.news || [], [board.news]);
+  const [newsSummary, setNewsSummary] = useState(null);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState("");
+
+  useEffect(() => {
+    if (hotNews.length === 0) return undefined;
+    let cancelled = false;
+    setIsSummaryLoading(true);
+    setSummaryError("");
+    setNewsSummary(null);
+
+    fetch("/api/news-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        news: hotNews.map((n) => ({ symbol: n.symbol, title: n.title }))
+      })
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          setSummaryError(payload.message || "Summary unavailable");
+          return;
+        }
+        setNewsSummary(payload.summary || null);
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryError("Summary unavailable");
+      })
+      .finally(() => {
+        if (!cancelled) setIsSummaryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hotNews]);
 
   const sidebarTrending = useMemo(() => board.stocks.slice(0, 5), [board.stocks]);
   const sidebarGainers = useMemo(() => (topGainers || []).slice(0, 5), [topGainers]);
@@ -581,6 +619,26 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
               {hotNews.length} {hotNews.length === 1 ? "story" : "stories"} across trending tickers
             </p>
           </div>
+          {(isSummaryLoading || newsSummary || summaryError) && (
+            <div className={`hot-news-summary${isSummaryLoading ? " loading" : ""}`}>
+              <div className="hot-news-summary-head">
+                <span className="hot-news-summary-badge">AI Brief</span>
+                <span className="hot-news-summary-source">Powered by Claude</span>
+              </div>
+              {isSummaryLoading ? (
+                <p className="hot-news-summary-text muted">
+                  Generating today&apos;s market brief…
+                </p>
+              ) : newsSummary ? (
+                <p className="hot-news-summary-text">{newsSummary}</p>
+              ) : (
+                <p className="hot-news-summary-text muted">
+                  {summaryError || "Summary unavailable. Set ANTHROPIC_API_KEY to enable."}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="hot-news-grid">
             {hotNews.map((item, idx) => {
               const matchingStock = board.stocks.find((s) => s.symbol === item.symbol);
