@@ -8,9 +8,6 @@ recommendation, and a fundamentals view (income statement + earnings).
 
 - Node.js **>= 20.9.0** (Next 16 will refuse to start on Node 18)
 - npm 10+ (ships with Node 20)
-- **(Optional)** an Anthropic API key for the AI news brief at the top of the Latest
-  Hot News section. Without it everything else still works — the news panel just shows
-  a polite "Summary unavailable" notice instead of a generated brief.
 
 If you're stuck on an older Node, install [nvm](https://github.com/nvm-sh/nvm) and run:
 
@@ -21,33 +18,14 @@ nvm use 20
 
 ## Environment variables
 
-Create a `.env.local` file at the project root. Next.js auto-loads it on every
-`npm run dev` / `npm run build` / `npm start` — **set the key once, forget about it**.
-`.env.local` is gitignored so the key never leaves your machine.
+The app runs with zero env vars by default. The only optional one is:
 
-```bash
-# .env.local
-ANTHROPIC_API_KEY=sk-ant-api03-...your-key-here...
-```
+| Variable             | Purpose                                                          | Required? |
+| -------------------- | ---------------------------------------------------------------- | --------- |
+| `WATCHLIST_DB_PATH`  | Override the default SQLite path (`data/market-current.db`).     | Optional  |
 
-Get your key at <https://console.anthropic.com/settings/keys>.
-
-| Variable             | Purpose                                                                                    | Required? |
-| -------------------- | ------------------------------------------------------------------------------------------ | --------- |
-| `ANTHROPIC_API_KEY`  | Powers the AI-generated brief at the top of the Latest Hot News section (Claude Opus 4.7). | Optional  |
-| `WATCHLIST_DB_PATH`  | Override the default SQLite path (`data/market-current.db`).                               | Optional  |
-
-> **Next.js env-file precedence** (later overrides earlier): `.env` → `.env.local` →
-> `.env.development` / `.env.production` → `.env.development.local` / `.env.production.local`.
-> Server-side variables are not exposed to the browser unless prefixed with `NEXT_PUBLIC_` —
-> our API key stays server-only on purpose.
-
-> **Restart `npm run dev` after editing `.env.local`** — env files load at server boot,
-> not via hot reload. You'll see `- Loaded env from .env.local` in the Next.js startup
-> log when the file is picked up.
-
-> **Deploying?** Don't ship `.env.local`. Set the same variables in your hosting
-> platform's environment-variable UI (Vercel: Project Settings → Environment Variables).
+If you need it, create `.env.local` in the project root — Next.js auto-loads it on
+every `npm run dev` / `npm run build` / `npm start`. `.env.local` is gitignored.
 
 ## Run locally
 
@@ -105,6 +83,54 @@ and break everything. The "vulnerability" warnings on a clean install come from
 transitive dev-only dependencies of Next.js itself; they are not exploitable in
 your code and are tracked upstream. Plain `npm audit fix` (no flag) is safe.
 
+## Auto-refresh schedule (news brief)
+
+A GitHub Action ([.github/workflows/refresh-brief.yml](.github/workflows/refresh-brief.yml))
+runs three times a day and regenerates [lib/news-brief.js](lib/news-brief.js) from
+live Yahoo Finance + Google News data. The script picks the section label based on
+the current UTC time, commits the change, and pushes to `main`.
+
+| Cron (UTC)              | Days        | Label produced  | Roughly       |
+| ----------------------- | ----------- | --------------- | ------------- |
+| `0 12 * * 1-5`          | Mon–Fri     | `"Pre-Market"`  | 7am EST / 8am EDT |
+| `0 22 * * 1-5`          | Mon–Fri     | `"After Close"` | 5pm EST / 6pm EDT |
+| `0 15 * * 0,6`          | Sat / Sun   | `"Today"`       | 10am EST / 11am EDT |
+
+### Enabling the action on your repo
+
+1. **Push the repo to GitHub.** The workflow is committed in `.github/workflows/`, so it
+   activates automatically as soon as the repo exists on GitHub. You don't need to
+   configure anything in the GitHub UI — `permissions: contents: write` is declared in
+   the workflow itself and uses the auto-provisioned `GITHUB_TOKEN`.
+
+2. **Confirm Actions are enabled.** Repo → Settings → Actions → General → "Allow all
+   actions and reusable workflows". (On a brand-new repo this is on by default.)
+
+3. **Confirm workflow write permissions.** Repo → Settings → Actions → General →
+   "Workflow permissions" → must be set to **Read and write permissions** so the
+   workflow can push the regenerated file. (On personal repos this is the default;
+   on org repos you may need to flip it on.)
+
+4. **Verify the first run.** From the GitHub Actions tab, pick *Refresh news brief*
+   and click *Run workflow* → main. It should take ~10 seconds, push a commit, and the
+   brief panel will reflect the latest data on the next deploy.
+
+### Local / manual refresh
+
+```bash
+npm run refresh-brief        # regenerates lib/news-brief.js from live data
+git add lib/news-brief.js && git commit -m "chore: refresh brief"
+git push                     # triggers your normal deploy (Vercel etc.)
+```
+
+No API keys required — the script uses only public Yahoo Finance + Google News RSS
+endpoints. Cost: $0.
+
+> **GitHub cron isn't precise.** Scheduled workflows can fire 5–30 minutes late
+> during peak hours, and may be skipped entirely if a repo sees no activity for 60
+> days (GitHub disables cron-only workflows on dormant repos). Re-enable via the
+> Actions UI if that happens.
+
 ## What it includes
 
 ### Top bar
@@ -135,12 +161,19 @@ the dropdowns are never empty.
 - **Top Gainers** preview — top 5 movers from the Yahoo `day_gainers` screener.
 
 ### Latest Hot News
-- **AI Brief** — a 2-3 sentence summary of the day's trending headlines generated by
-  Claude Opus 4.7 with adaptive thinking ([lib/news-summary.js](lib/news-summary.js)).
-  Loaded asynchronously on page load with a pulse animation, cached for 10 minutes
-  server-side keyed by news content hash so repeat visits don't re-bill Claude.
-  Requires `ANTHROPIC_API_KEY` — without it, the panel is hidden and the rest of the
-  feature still works.
+- **Daily Brief** — static summary panel served from [lib/news-brief.js](lib/news-brief.js).
+  No API key, no per-page-load cost. The file exports `NEWS_BRIEFS` (array of
+  `{label, text}`) and is **auto-refreshed by a GitHub Action** three times a day
+  ([.github/workflows/refresh-brief.yml](.github/workflows/refresh-brief.yml) — see
+  *"Auto-refresh schedule"* below). To refresh manually, run
+  `npm run refresh-brief` and commit the result.
+
+  Labels:
+  - **Trading day** (Mon–Fri): `"Pre-Market"` (before 18:00 UTC) or `"After Close"`
+    (18:00 UTC and later) — the workflow chooses based on current UTC time.
+  - **Non-trading day** (weekend, market holiday): one `"Today"` entry covering
+    overnight/weekend activity (mostly crypto + futures).
+  - Set `NEWS_BRIEFS = []` and commit to hide the panel.
 - **Headline grid** — up to 12 fresh Google News headlines across the top trending
   tickers, interleaved (alternating symbols) for visual variety. Each card shows the
   stock chip (clickable → opens analysis modal) and the headline (external link).
@@ -213,7 +246,7 @@ lib/
   stocks.js                 Yahoo Finance data layer (quotes, history, fundamentals)
   analytics.js              Recommendation scoring + client-side event logger
   db.js                     SQLite (better-sqlite3) — watchlist persistence
-  news-summary.js           Claude Opus 4.7 news-summary helper (+ 10-min cache)
+  news-brief.js             Static daily news brief — edit by hand or via Claude Code
 pages/
   index.js                  Home page (SSR'd trending board)
   _app.js                   App shell
@@ -223,9 +256,13 @@ pages/
     search.js               /api/search — symbol type-ahead
     analytics.js            /api/analytics — chart history + recommendation + fundamentals
     watchlist.js            /api/watchlist — load / save per-device watchlist
-    news-summary.js         /api/news-summary — POST headlines, get a Claude-generated brief
 styles/
   globals.css               All styles (no CSS framework)
+scripts/
+  refresh-news-brief.mjs    Regenerates lib/news-brief.js from live Yahoo + Google News
+.github/
+  workflows/
+    refresh-brief.yml       Cron workflow that runs the refresh script + commits
 data/                       SQLite database lives here (gitignored, auto-created)
 ```
 

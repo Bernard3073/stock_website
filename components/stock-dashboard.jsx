@@ -6,6 +6,7 @@ import { CandlestickChart } from "./trading-chart";
 import { FinancialsSection } from "./financials-section";
 import { TopBar } from "./top-bar";
 import { AnalystInsights } from "./analyst-insights";
+import { NEWS_BRIEFS, BRIEF_GENERATED_AT } from "../lib/news-brief";
 
 const WATCHLIST_STORAGE_KEY = "market-current-watchlist";
 const DEVICE_ID_KEY = "market-current-device-id";
@@ -296,44 +297,6 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   }, [watchlistItems]);
 
   const hotNews = useMemo(() => board.news || [], [board.news]);
-  const [newsSummary, setNewsSummary] = useState(null);
-  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
-  const [summaryError, setSummaryError] = useState("");
-
-  useEffect(() => {
-    if (hotNews.length === 0) return undefined;
-    let cancelled = false;
-    setIsSummaryLoading(true);
-    setSummaryError("");
-    setNewsSummary(null);
-
-    fetch("/api/news-summary", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        news: hotNews.map((n) => ({ symbol: n.symbol, title: n.title }))
-      })
-    })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!response.ok) {
-          setSummaryError(payload.message || "Summary unavailable");
-          return;
-        }
-        setNewsSummary(payload.summary || null);
-      })
-      .catch(() => {
-        if (!cancelled) setSummaryError("Summary unavailable");
-      })
-      .finally(() => {
-        if (!cancelled) setIsSummaryLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [hotNews]);
 
   const sidebarTrending = useMemo(() => board.stocks.slice(0, 5), [board.stocks]);
   const sidebarGainers = useMemo(() => (topGainers || []).slice(0, 5), [topGainers]);
@@ -619,23 +582,22 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
               {hotNews.length} {hotNews.length === 1 ? "story" : "stories"} across trending tickers
             </p>
           </div>
-          {(isSummaryLoading || newsSummary || summaryError) && (
-            <div className={`hot-news-summary${isSummaryLoading ? " loading" : ""}`}>
+          {Array.isArray(NEWS_BRIEFS) && NEWS_BRIEFS.length > 0 && (
+            <div className="hot-news-summary">
               <div className="hot-news-summary-head">
-                <span className="hot-news-summary-badge">AI Brief</span>
-                <span className="hot-news-summary-source">Powered by Claude</span>
+                <span className="hot-news-summary-badge">Daily Brief</span>
+                <span className="hot-news-summary-source">
+                  Updated {BRIEF_GENERATED_AT}
+                </span>
               </div>
-              {isSummaryLoading ? (
-                <p className="hot-news-summary-text muted">
-                  Generating today&apos;s market brief…
-                </p>
-              ) : newsSummary ? (
-                <p className="hot-news-summary-text">{newsSummary}</p>
-              ) : (
-                <p className="hot-news-summary-text muted">
-                  {summaryError || "Summary unavailable. Set ANTHROPIC_API_KEY to enable."}
-                </p>
-              )}
+              <div className="hot-news-summary-sections">
+                {NEWS_BRIEFS.map((brief) => (
+                  <div className="hot-news-summary-section" key={brief.label}>
+                    <span className="hot-news-summary-label">{brief.label}</span>
+                    <p className="hot-news-summary-text">{brief.text}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -879,56 +841,61 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
             </div>
           )}
 
-          {sidebarTrending.length > 0 && (
-            <section className="sidebar-list-section">
-              <div className="sidebar-list-header">
-                <h3>Trending</h3>
-                <span className="sidebar-list-meta">Top {sidebarTrending.length}</span>
-              </div>
-              <div className="sidebar-stock-list">
-                {sidebarTrending.map((stock) => (
-                  <button
-                    key={stock.symbol}
-                    type="button"
-                    className="sidebar-stock-row"
-                    onClick={() => loadStockRecommendation(stock)}
-                  >
-                    <span className="sidebar-stock-symbol">{stock.symbol}</span>
-                    <span className="sidebar-stock-name">{stock.shortName}</span>
-                    <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
-                      {formatPercent(stock.marketChangePercent)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {sidebarGainers.length > 0 && (
-            <section className="sidebar-list-section">
-              <div className="sidebar-list-header">
-                <h3>Top Gainers</h3>
-                <span className="sidebar-list-meta">Top {sidebarGainers.length}</span>
-              </div>
-              <div className="sidebar-stock-list">
-                {sidebarGainers.map((stock) => (
-                  <button
-                    key={stock.symbol}
-                    type="button"
-                    className="sidebar-stock-row"
-                    onClick={() => loadStockRecommendation(stock)}
-                  >
-                    <span className="sidebar-stock-symbol">{stock.symbol}</span>
-                    <span className="sidebar-stock-name">{stock.shortName}</span>
-                    <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
-                      {formatPercent(stock.marketChangePercent)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
         </aside>
+
+        {(sidebarTrending.length > 0 || sidebarGainers.length > 0) && (
+          <aside className="lists-column">
+            {sidebarTrending.length > 0 && (
+              <section className="sidebar-list-section">
+                <div className="sidebar-list-header">
+                  <h3>Trending</h3>
+                  <span className="sidebar-list-meta">Top {sidebarTrending.length}</span>
+                </div>
+                <div className="sidebar-stock-list">
+                  {sidebarTrending.map((stock) => (
+                    <button
+                      key={stock.symbol}
+                      type="button"
+                      className="sidebar-stock-row"
+                      onClick={() => loadStockRecommendation(stock)}
+                    >
+                      <span className="sidebar-stock-symbol">{stock.symbol}</span>
+                      <span className="sidebar-stock-name">{stock.shortName}</span>
+                      <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
+                        {formatPercent(stock.marketChangePercent)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {sidebarGainers.length > 0 && (
+              <section className="sidebar-list-section">
+                <div className="sidebar-list-header">
+                  <h3>Top Gainers</h3>
+                  <span className="sidebar-list-meta">Top {sidebarGainers.length}</span>
+                </div>
+                <div className="sidebar-stock-list">
+                  {sidebarGainers.map((stock) => (
+                    <button
+                      key={stock.symbol}
+                      type="button"
+                      className="sidebar-stock-row"
+                      onClick={() => loadStockRecommendation(stock)}
+                    >
+                      <span className="sidebar-stock-symbol">{stock.symbol}</span>
+                      <span className="sidebar-stock-name">{stock.shortName}</span>
+                      <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
+                        {formatPercent(stock.marketChangePercent)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </aside>
+        )}
       </section>
 
       {selectedStock && (

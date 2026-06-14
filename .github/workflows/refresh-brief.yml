@@ -1,0 +1,49 @@
+name: Refresh news brief
+
+# Cron times below are in UTC. The script picks a label from current UTC time:
+#   • Mon–Fri before 18:00 UTC → "Pre-Market"
+#   • Mon–Fri 18:00 UTC and later → "After Close"
+#   • Sat / Sun → "Today"
+on:
+  schedule:
+    # Weekday pre-market: 12:00 UTC = 7am EST / 8am EDT
+    - cron: "0 12 * * 1-5"
+    # Weekday after-close: 22:00 UTC = 5pm EST / 6pm EDT
+    - cron: "0 22 * * 1-5"
+    # Weekend: 15:00 UTC = 10am EST / 11am EDT
+    - cron: "0 15 * * 0,6"
+  workflow_dispatch:  # allow manual runs from the Actions tab
+
+permissions:
+  contents: write  # required to push the regenerated file back to main
+
+concurrency:
+  group: refresh-news-brief
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Regenerate brief
+        run: node scripts/refresh-news-brief.mjs
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -n "$(git status --porcelain lib/news-brief.js)" ]; then
+            git add lib/news-brief.js
+            git commit -m "chore: refresh news brief"
+            git push
+          else
+            echo "No changes — nothing to commit."
+          fi
