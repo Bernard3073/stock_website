@@ -22,12 +22,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    if (findUserByEmail(email)) {
+    if (await findUserByEmail(email)) {
       return res.status(409).json({ message: "An account with that email already exists." });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    createUser({
+    await createUser({
       email,
       name,
       passwordHash,

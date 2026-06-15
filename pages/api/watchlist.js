@@ -12,14 +12,14 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "GET") {
-      return res.status(200).json({ items: getWatchlist(userId) });
+      return res.status(200).json({ items: await getWatchlist(userId) });
     }
 
     if (req.method === "PUT") {
       const body = req.body || {};
       const entries = Array.isArray(body.entries) ? body.entries : [];
-      replaceWatchlist(userId, entries);
-      return res.status(200).json({ items: getWatchlist(userId) });
+      await replaceWatchlist(userId, entries);
+      return res.status(200).json({ items: await getWatchlist(userId) });
     }
 
     res.setHeader("Allow", "GET, PUT");
