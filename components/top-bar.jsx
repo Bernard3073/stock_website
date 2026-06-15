@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
+import Link from "next/link";
 
 const THEME_STORAGE_KEY = "market-current-theme";
 
@@ -78,6 +80,7 @@ function StockDropdownRow({ stock, onSelect }) {
 }
 
 export function TopBar({ watchlistStocks, topGainers, mostActives, onStockSelect }) {
+  const { data: session, status } = useSession();
   const [openMenu, setOpenMenu] = useState(null);
   const [theme, setTheme] = useState("light");
   const containerRef = useRef(null);
@@ -202,6 +205,39 @@ export function TopBar({ watchlistStocks, topGainers, mostActives, onStockSelect
         >
           {theme === "dark" ? <SunIcon /> : <MoonIcon />}
         </button>
+
+        {status === "authenticated" && session?.user ? (
+          <div className="top-bar-user">
+            {session.user.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={session.user.image}
+                alt=""
+                className="top-bar-avatar"
+              />
+            ) : (
+              <span className="top-bar-avatar top-bar-avatar-initial" aria-hidden="true">
+                {(session.user.name || session.user.email || "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+            <span className="top-bar-user-label" title={session.user.email}>
+              {session.user.name || session.user.email}
+            </span>
+            <button
+              type="button"
+              className="top-bar-signout-btn"
+              onClick={() => signOut({ callbackUrl: "/" })}
+            >
+              Sign out
+            </button>
+          </div>
+        ) : status === "loading" ? (
+          <span className="top-bar-signin-placeholder" aria-hidden="true">…</span>
+        ) : (
+          <Link href="/login" className="top-bar-signin-btn">
+            Sign in
+          </Link>
+        )}
       </div>
     </header>
   );

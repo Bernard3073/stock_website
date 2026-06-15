@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { trackAnalyticsEvent } from "../lib/analytics";
 import { CandlestickChart } from "./trading-chart";
 import { FinancialsSection } from "./financials-section";
@@ -8,21 +10,7 @@ import { TopBar } from "./top-bar";
 import { AnalystInsights } from "./analyst-insights";
 import { NEWS_BRIEFS, BRIEF_GENERATED_AT } from "../lib/news-brief";
 
-const WATCHLIST_STORAGE_KEY = "market-current-watchlist";
-const DEVICE_ID_KEY = "market-current-device-id";
 const SYNC_DEBOUNCE_MS = 600;
-
-function getOrCreateDeviceId() {
-  if (typeof window === "undefined") return "";
-  let id = window.localStorage.getItem(DEVICE_ID_KEY);
-  if (!id) {
-    id = (typeof crypto !== "undefined" && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    window.localStorage.setItem(DEVICE_ID_KEY, id);
-  }
-  return id;
-}
 
 function watchlistObjectToArray(map) {
   return Object.entries(map).map(([symbol, entry]) => ({
@@ -109,55 +97,45 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   const [recommendationError, setRecommendationError] = useState("");
   const [chartRange, setChartRange] = useState("1mo");
   const [isLoadingChart, setIsLoadingChart] = useState(false);
-  const [deviceId, setDeviceId] = useState("");
   const [isWatchlistHydrated, setIsWatchlistHydrated] = useState(false);
   const [watchlistSyncStatus, setWatchlistSyncStatus] = useState("");
   const syncTimerRef = useRef(null);
   const skipNextSyncRef = useRef(true);
 
+  const { data: session, status: sessionStatus } = useSession();
+  const isAuthenticated = sessionStatus === "authenticated";
+  const userId = session?.user?.id || null;
+
   useEffect(() => {
-    const id = getOrCreateDeviceId();
-    setDeviceId(id);
+    // Reset watchlist state whenever auth status changes.
+    skipNextSyncRef.current = true;
+    setIsWatchlistHydrated(false);
+    setWatchlistSyncStatus("");
+
+    if (sessionStatus === "loading") return;
+
+    if (!isAuthenticated) {
+      setWatchlist({});
+      setIsWatchlistHydrated(false);
+      return;
+    }
 
     let cancelled = false;
-    let localCache = {};
-    try {
-      const raw = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
-      if (raw) localCache = JSON.parse(raw) || {};
-    } catch {
-      localCache = {};
-    }
 
     async function hydrate() {
       try {
-        const response = await fetch("/api/watchlist", {
-          headers: { "x-device-id": id },
-          cache: "no-store"
-        });
-        if (!response.ok) throw new Error("server unavailable");
+        const response = await fetch("/api/watchlist", { cache: "no-store" });
+        if (!response.ok) throw new Error("watchlist load failed");
         const payload = await response.json();
-        const serverItems = Array.isArray(payload.items) ? payload.items : [];
-
         if (cancelled) return;
-
-        if (serverItems.length > 0) {
-          skipNextSyncRef.current = true;
-          setWatchlist(watchlistArrayToObject(serverItems));
-        } else if (Object.keys(localCache).length > 0) {
-          setWatchlist(localCache);
-          await fetch("/api/watchlist", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json", "x-device-id": id },
-            body: JSON.stringify({ entries: watchlistObjectToArray(localCache) })
-          }).catch(() => {});
-        } else {
-          skipNextSyncRef.current = true;
-          setWatchlist({});
-        }
+        const items = Array.isArray(payload.items) ? payload.items : [];
+        skipNextSyncRef.current = true;
+        setWatchlist(watchlistArrayToObject(items));
       } catch {
         if (cancelled) return;
         skipNextSyncRef.current = true;
-        setWatchlist(localCache);
+        setWatchlist({});
+        setWatchlistSyncStatus("Could not load watchlist");
       } finally {
         if (!cancelled) setIsWatchlistHydrated(true);
       }
@@ -165,19 +143,10 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
 
     hydrate();
     return () => { cancelled = true; };
-  }, []);
+  }, [isAuthenticated, sessionStatus, userId]);
 
   useEffect(() => {
-    if (!isWatchlistHydrated) return;
-    try {
-      window.localStorage.setItem(WATCHLIST_STORAGE_KEY, JSON.stringify(watchlist));
-    } catch {
-      // localStorage may be full or disabled
-    }
-  }, [watchlist, isWatchlistHydrated]);
-
-  useEffect(() => {
-    if (!isWatchlistHydrated || !deviceId) return;
+    if (!isWatchlistHydrated || !isAuthenticated) return;
     if (skipNextSyncRef.current) {
       skipNextSyncRef.current = false;
       return;
@@ -189,20 +158,20 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
       try {
         const response = await fetch("/api/watchlist", {
           method: "PUT",
-          headers: { "Content-Type": "application/json", "x-device-id": deviceId },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ entries: watchlistObjectToArray(watchlist) })
         });
         if (!response.ok) throw new Error("sync failed");
         setWatchlistSyncStatus("Saved to your account");
       } catch {
-        setWatchlistSyncStatus("Offline — changes saved locally");
+        setWatchlistSyncStatus("Could not save changes — retry shortly");
       }
     }, SYNC_DEBOUNCE_MS);
 
     return () => {
       if (syncTimerRef.current) window.clearTimeout(syncTimerRef.current);
     };
-  }, [watchlist, isWatchlistHydrated, deviceId]);
+  }, [watchlist, isWatchlistHydrated, isAuthenticated]);
 
   useEffect(() => {
     const normalizedSymbol = symbolInput.trim();
@@ -704,15 +673,26 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                             <p className="stock-name">{stock.shortName}</p>
                           </div>
 
-                          <button
-                            className={`track-button ${isTracked ? "tracked" : ""}`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              toggleWatchlist(stock.symbol);
-                            }}
-                          >
-                            {isTracked ? "Tracking" : "Track"}
-                          </button>
+                          {isAuthenticated ? (
+                            <button
+                              className={`track-button ${isTracked ? "tracked" : ""}`}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                toggleWatchlist(stock.symbol);
+                              }}
+                            >
+                              {isTracked ? "Tracking" : "Track"}
+                            </button>
+                          ) : (
+                            <Link
+                              href="/login"
+                              className="track-button"
+                              onClick={(event) => event.stopPropagation()}
+                              title="Sign in to add this stock to your watchlist"
+                            >
+                              Sign in to track
+                            </Link>
+                          )}
                         </div>
 
                         <div className="price-row">
@@ -754,91 +734,108 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
             ) : null}
           </div>
 
-          <form className="watchlist-form" onSubmit={addSymbolToWatchlist}>
-            <label htmlFor="watchlist-symbol">Add a symbol</label>
-            <div className="watchlist-form-row">
-              <div className="watchlist-input-wrap">
-                <input
-                  id="watchlist-symbol"
-                  value={symbolInput}
-                  onChange={(event) => setSymbolInput(event.target.value.toUpperCase())}
-                  onBlur={() => window.setTimeout(() => setSymbolSuggestions([]), 120)}
-                  placeholder="Add NVDA or type a company name"
-                  maxLength={32}
-                  autoComplete="off"
-                />
-                {(symbolSuggestions.length > 0 || isSearchingSymbols) && (
-                  <div className="suggestions-list" role="listbox" aria-label="Stock suggestions">
-                    {isSearchingSymbols && symbolSuggestions.length === 0 ? (
-                      <div className="suggestion-item muted">Searching...</div>
-                    ) : (
-                      symbolSuggestions.map((suggestion) => (
-                        <button
-                          className="suggestion-item"
-                          key={`${suggestion.symbol}-${suggestion.exchange}`}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            selectSuggestion(suggestion);
-                          }}
-                          type="button"
-                        >
-                          <span className="suggestion-symbol">{suggestion.symbol}</span>
-                          <span className="suggestion-name">{suggestion.shortName}</span>
-                          <span className="suggestion-meta">{suggestion.exchange}</span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-              <button className="track-button tracked" type="submit" disabled={isAddingSymbol}>
-                {isAddingSymbol ? "Adding..." : "Add"}
-              </button>
-            </div>
-            <p className="watchlist-helper">
-              Add any symbol directly, even if it is not on today&apos;s board.
-            </p>
-            {watchlistMessage ? <p className="status-copy">{watchlistMessage}</p> : null}
-          </form>
-
-          {watchlistItems.length === 0 ? (
-            <div className="empty-watchlist">
-              <p>Add a symbol manually or track one from the board to keep it here.</p>
-              <p>Your notes stay saved in this browser for your next daily check-in.</p>
+          {!isAuthenticated ? (
+            <div className="watchlist-signin-card">
+              <p className="watchlist-signin-headline">
+                Sign in to save your watchlist
+              </p>
+              <p className="watchlist-signin-copy">
+                Create a free account or continue with Google to save symbols and
+                notes that follow you across devices.
+              </p>
+              <Link href="/login" className="watchlist-signin-btn">
+                Sign in or create account
+              </Link>
             </div>
           ) : (
-            <div className="watchlist-stack">
-              {watchlistItems.map((item) => (
-                <article className="watchlist-card" key={item.symbol}>
-                  <div className="watchlist-card-header">
-                    <div>
-                      <h3>{item.symbol}</h3>
-                      <p>{item.stock?.shortName || "Saved from a previous session"}</p>
-                    </div>
-                    <button className="ghost-button" onClick={() => toggleWatchlist(item.symbol)}>
-                      Remove
-                    </button>
+            <>
+              <form className="watchlist-form" onSubmit={addSymbolToWatchlist}>
+                <label htmlFor="watchlist-symbol">Add a symbol</label>
+                <div className="watchlist-form-row">
+                  <div className="watchlist-input-wrap">
+                    <input
+                      id="watchlist-symbol"
+                      value={symbolInput}
+                      onChange={(event) => setSymbolInput(event.target.value.toUpperCase())}
+                      onBlur={() => window.setTimeout(() => setSymbolSuggestions([]), 120)}
+                      placeholder="Add NVDA or type a company name"
+                      maxLength={32}
+                      autoComplete="off"
+                    />
+                    {(symbolSuggestions.length > 0 || isSearchingSymbols) && (
+                      <div className="suggestions-list" role="listbox" aria-label="Stock suggestions">
+                        {isSearchingSymbols && symbolSuggestions.length === 0 ? (
+                          <div className="suggestion-item muted">Searching...</div>
+                        ) : (
+                          symbolSuggestions.map((suggestion) => (
+                            <button
+                              className="suggestion-item"
+                              key={`${suggestion.symbol}-${suggestion.exchange}`}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                selectSuggestion(suggestion);
+                              }}
+                              type="button"
+                            >
+                              <span className="suggestion-symbol">{suggestion.symbol}</span>
+                              <span className="suggestion-name">{suggestion.shortName}</span>
+                              <span className="suggestion-meta">{suggestion.exchange}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
+                  <button className="track-button tracked" type="submit" disabled={isAddingSymbol}>
+                    {isAddingSymbol ? "Adding..." : "Add"}
+                  </button>
+                </div>
+                <p className="watchlist-helper">
+                  Add any symbol directly, even if it is not on today&apos;s board.
+                </p>
+                {watchlistMessage ? <p className="status-copy">{watchlistMessage}</p> : null}
+              </form>
 
-                  <div className="watchlist-price-row">
-                    <strong>{formatMoney(item.stock?.regularMarketPrice)}</strong>
-                    <span className={`change-pill ${getChangeTone(item.stock?.marketChangePercent)}`}>
-                      {formatPercent(item.stock?.marketChangePercent)}
-                    </span>
-                  </div>
+              {watchlistItems.length === 0 ? (
+                <div className="empty-watchlist">
+                  <p>Add a symbol manually or track one from the board to keep it here.</p>
+                  <p>Your notes stay saved in your account for your next daily check-in.</p>
+                </div>
+              ) : (
+                <div className="watchlist-stack">
+                  {watchlistItems.map((item) => (
+                    <article className="watchlist-card" key={item.symbol}>
+                      <div className="watchlist-card-header">
+                        <div>
+                          <h3>{item.symbol}</h3>
+                          <p>{item.stock?.shortName || "Saved from a previous session"}</p>
+                        </div>
+                        <button className="ghost-button" onClick={() => toggleWatchlist(item.symbol)}>
+                          Remove
+                        </button>
+                      </div>
 
-                  <label className="notes-label" htmlFor={`note-${item.symbol}`}>
-                    Daily note
-                  </label>
-                  <textarea
-                    id={`note-${item.symbol}`}
-                    value={item.note}
-                    onChange={(event) => updateNote(item.symbol, event.target.value)}
-                    placeholder="Why is this one on your radar today?"
-                  />
-                </article>
-              ))}
-            </div>
+                      <div className="watchlist-price-row">
+                        <strong>{formatMoney(item.stock?.regularMarketPrice)}</strong>
+                        <span className={`change-pill ${getChangeTone(item.stock?.marketChangePercent)}`}>
+                          {formatPercent(item.stock?.marketChangePercent)}
+                        </span>
+                      </div>
+
+                      <label className="notes-label" htmlFor={`note-${item.symbol}`}>
+                        Daily note
+                      </label>
+                      <textarea
+                        id={`note-${item.symbol}`}
+                        value={item.note}
+                        onChange={(event) => updateNote(item.symbol, event.target.value)}
+                        placeholder="Why is this one on your radar today?"
+                      />
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
         </aside>

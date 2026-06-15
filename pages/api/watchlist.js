@@ -1,29 +1,25 @@
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../../lib/auth-options";
 import { getWatchlist, replaceWatchlist } from "../../lib/db";
 
-function getDeviceId(req) {
-  const fromHeader = typeof req.headers["x-device-id"] === "string" ? req.headers["x-device-id"] : null;
-  const fromQuery = typeof req.query.deviceId === "string" ? req.query.deviceId : null;
-  const value = (fromHeader || fromQuery || "").trim();
-  if (!/^[A-Za-z0-9_-]{8,128}$/.test(value)) return "";
-  return value;
-}
+export default async function handler(req, res) {
+  const session = await getServerSession(req, res, authOptions);
+  const userId = session?.user?.id;
 
-export default function handler(req, res) {
-  const deviceId = getDeviceId(req);
-  if (!deviceId) {
-    return res.status(400).json({ message: "Missing or invalid device id" });
+  if (!userId) {
+    return res.status(401).json({ message: "You must be signed in to use the watchlist." });
   }
 
   try {
     if (req.method === "GET") {
-      return res.status(200).json({ items: getWatchlist(deviceId) });
+      return res.status(200).json({ items: getWatchlist(userId) });
     }
 
     if (req.method === "PUT") {
       const body = req.body || {};
       const entries = Array.isArray(body.entries) ? body.entries : [];
-      replaceWatchlist(deviceId, entries);
-      return res.status(200).json({ items: getWatchlist(deviceId) });
+      replaceWatchlist(userId, entries);
+      return res.status(200).json({ items: getWatchlist(userId) });
     }
 
     res.setHeader("Allow", "GET, PUT");

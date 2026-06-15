@@ -18,14 +18,39 @@ nvm use 20
 
 ## Environment variables
 
-The app runs with zero env vars by default. The only optional one is:
+Email/password sign-up works with **zero env vars** out of the box. To enable Google
+sign-in and to satisfy NextAuth.js's session signing, add the following to
+`.env.local` in the project root:
 
-| Variable             | Purpose                                                          | Required? |
-| -------------------- | ---------------------------------------------------------------- | --------- |
-| `WATCHLIST_DB_PATH`  | Override the default SQLite path (`data/market-current.db`).     | Optional  |
+| Variable                 | Purpose                                                                                            | Required?                |
+| ------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------ |
+| `NEXTAUTH_SECRET`        | Secret used to sign session JWTs. Generate with `openssl rand -base64 32`.                          | **Required** (any deploy)|
+| `NEXTAUTH_URL`           | Public URL of the site, e.g. `http://localhost:3000` in dev.                                       | **Required** in production |
+| `GOOGLE_CLIENT_ID`       | OAuth client id from Google Cloud Console. Without it the "Continue with Google" button is hidden. | Optional                 |
+| `GOOGLE_CLIENT_SECRET`   | OAuth client secret matching the above.                                                            | Optional                 |
+| `WATCHLIST_DB_PATH`      | Override the default SQLite path (`data/market-current.db`).                                       | Optional                 |
 
-If you need it, create `.env.local` in the project root — Next.js auto-loads it on
-every `npm run dev` / `npm run build` / `npm start`. `.env.local` is gitignored.
+A starter `.env.local`:
+
+```ini
+NEXTAUTH_SECRET=replace-with-output-of-openssl-rand-base64-32
+NEXTAUTH_URL=http://localhost:3000
+# Optional — enables the Google sign-in button
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+`.env.local` is gitignored. Next.js auto-loads it on every `npm run dev` /
+`npm run build` / `npm start`.
+
+### Setting up Google OAuth (optional but nice)
+
+1. Go to [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials).
+2. Create an **OAuth 2.0 Client ID** of type **Web application**.
+3. **Authorized JavaScript origins:** `http://localhost:3000` (and your production URL).
+4. **Authorized redirect URIs:** `http://localhost:3000/api/auth/callback/google` (and the production equivalent).
+5. Copy the client id + secret into `.env.local` as shown above.
+6. Restart `npm run dev` — the Google button on `/login` will light up.
 
 ## Run locally
 

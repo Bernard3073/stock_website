@@ -806,6 +806,329 @@ button {
   font-size: 0.92rem;
 }
 
+.watchlist-signin-card {
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(29, 139, 132, 0.10), rgba(240, 125, 58, 0.08));
+  border: 1px solid var(--line);
+  text-align: center;
+}
+
+.watchlist-signin-headline {
+  margin: 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.watchlist-signin-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.watchlist-signin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--ink-contrast);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.watchlist-signin-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+/* Top bar user menu */
+.top-bar-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 999px;
+  background: rgba(var(--ink-rgb), 0.04);
+  border: 1px solid var(--line);
+}
+
+.top-bar-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--ink);
+  color: var(--ink-contrast);
+}
+
+.top-bar-avatar-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.top-bar-user-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-bar-signout-btn {
+  margin-left: 4px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.top-bar-signout-btn:hover {
+  background: rgba(var(--ink-rgb), 0.08);
+  color: var(--ink);
+}
+
+.top-bar-signin-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--ink-contrast);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.top-bar-signin-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.top-bar-signin-placeholder {
+  display: inline-block;
+  margin-left: 8px;
+  width: 36px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Auth (sign-in / sign-up) page */
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 32px;
+  border-radius: 24px;
+  background: var(--paper-strong);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 14px;
+}
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  text-decoration: none;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.auth-brand-dot {
+  color: var(--orange);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.auth-title {
+  margin: 4px 0 0;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+}
+
+.auth-subtitle {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.auth-google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.auth-google-btn:hover:not(:disabled) {
+  background: rgba(var(--ink-rgb), 0.04);
+  border-color: var(--ink);
+}
+
+.auth-google-disabled {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(var(--ink-rgb), 0.04);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.auth-google-disabled code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(var(--ink-rgb), 0.08);
+  font-size: 0.78rem;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 5px;
+}
+
+.auth-field span {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.auth-field input {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.95rem;
+}
+
+.auth-field input:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(29, 139, 132, 0.18);
+}
+
+.auth-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(181, 74, 51, 0.12);
+  color: var(--red);
+  font-size: 0.85rem;
+}
+
+.auth-submit {
+  margin-top: 4px;
+  padding: 11px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--ink);
+  color: var(--ink-contrast);
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: opacity 150ms ease;
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.auth-toggle {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  text-align: center;
+}
+
+.auth-toggle-btn {
+  border: 0;
+  background: transparent;
+  color: var(--teal);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.86rem;
+  padding: 0;
+}
+
+.auth-back {
+  margin-top: 6px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.auth-back:hover {
+  color: var(--ink);
+}
+
 .watchlist-sync-status {
   display: inline-flex;
   align-items: center;
@@ -889,6 +1212,11 @@ button {
   background: rgba(248, 244, 236, 0.86);
   backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--line);
+}
+
+[data-theme="dark"] .top-bar {
+  background: rgba(13, 22, 20, 0.82);
+  border-bottom-color: rgba(var(--ink-rgb), 0.12);
 }
 
 .top-bar-inner {
