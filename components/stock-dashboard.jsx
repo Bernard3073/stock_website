@@ -79,6 +79,213 @@ function getChangeTone(change) {
   return "neutral";
 }
 
+function ModalTabbedContent({
+  recommendationData,
+  chartRange,
+  onRangeChange,
+  isLoadingChart,
+  activeTab,
+  setActiveTab
+}) {
+  const fundamentals = recommendationData.fundamentals;
+  const analyst = fundamentals?.analystInsights || null;
+  const companyProfile = fundamentals?.companyProfile || null;
+  const newsItems = recommendationData.news || [];
+
+  const hasAnalyst = Boolean(analyst);
+  const hasProfile = Boolean(companyProfile);
+  const hasFundamentals = Boolean(
+    fundamentals &&
+      ((fundamentals.annualIncome && fundamentals.annualIncome.length > 0) ||
+        (fundamentals.quarterlyEarnings && fundamentals.quarterlyEarnings.length > 0) ||
+        (fundamentals.annualFinancials && fundamentals.annualFinancials.length > 0))
+  );
+  const hasNews = newsItems.length > 0;
+  const hasSignals = Array.isArray(recommendationData.signals) && recommendationData.signals.length > 0;
+  const hasReasoning = Boolean(recommendationData.reasoning);
+
+  const tabs = [
+    { id: "summary", label: "Summary", show: true },
+    { id: "news", label: hasNews ? `News (${newsItems.length})` : "News", show: hasNews },
+    { id: "analysis", label: "Analysis", show: hasAnalyst || hasSignals || hasReasoning },
+    { id: "financials", label: "Financials", show: hasFundamentals }
+  ].filter((t) => t.show);
+
+  const currentTab = tabs.some((t) => t.id === activeTab) ? activeTab : "summary";
+
+  return (
+    <div className="recommendation-content">
+      <div className="modal-tabs" role="tablist">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={currentTab === t.id}
+            className={`modal-tab${currentTab === t.id ? " active" : ""}`}
+            onClick={() => setActiveTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="modal-tab-panel" role="tabpanel">
+        {currentTab === "summary" && (
+          <div className="modal-tab-stack">
+            <CandlestickChart
+              history={recommendationData.history || []}
+              currentRange={chartRange}
+              onRangeChange={onRangeChange}
+              isLoading={isLoadingChart}
+            />
+
+            <div className="recommendation-metrics">
+              <h3>Stock Metrics</h3>
+              <div className="metrics-grid">
+                <div className="metric">
+                  <span>Current Price</span>
+                  <strong>{formatMoney(recommendationData.indicators.price)}</strong>
+                </div>
+                <div className="metric">
+                  <span>Day Change</span>
+                  <strong className={getChangeTone(recommendationData.indicators.dayChange) === "up" ? "up" : "down"}>
+                    {formatPercent(recommendationData.indicators.dayChange)}
+                  </strong>
+                </div>
+                <div className="metric">
+                  <span>Volume</span>
+                  <strong>{formatCompact(recommendationData.indicators.volume)}</strong>
+                </div>
+                {recommendationData.indicators.pe && (
+                  <div className="metric">
+                    <span>P/E Ratio</span>
+                    <strong>{recommendationData.indicators.pe.toFixed(2)}</strong>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {hasProfile && (
+              <div className="company-profile">
+                <h3>Company Profile</h3>
+                <div className="company-profile-grid">
+                  {companyProfile.sector && (
+                    <div className="company-profile-field">
+                      <span>Sector</span>
+                      <strong>{companyProfile.sector}</strong>
+                    </div>
+                  )}
+                  {companyProfile.industry && (
+                    <div className="company-profile-field">
+                      <span>Industry</span>
+                      <strong>{companyProfile.industry}</strong>
+                    </div>
+                  )}
+                  {(companyProfile.city || companyProfile.country) && (
+                    <div className="company-profile-field">
+                      <span>Headquarters</span>
+                      <strong>
+                        {[companyProfile.city, companyProfile.state, companyProfile.country]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </strong>
+                    </div>
+                  )}
+                  {companyProfile.fullTimeEmployees != null && (
+                    <div className="company-profile-field">
+                      <span>Employees</span>
+                      <strong>
+                        {new Intl.NumberFormat("en-US").format(companyProfile.fullTimeEmployees)}
+                      </strong>
+                    </div>
+                  )}
+                  {companyProfile.website && (
+                    <div className="company-profile-field">
+                      <span>Website</span>
+                      <a
+                        className="company-profile-link"
+                        href={companyProfile.website}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {companyProfile.website.replace(/^https?:\/\//, "").replace(/\/$/, "")} ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+                {companyProfile.longBusinessSummary && (
+                  <p className="company-profile-summary">
+                    {companyProfile.longBusinessSummary}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {hasReasoning && (
+              <div className="recommendation-reasoning">
+                <h3>At a Glance</h3>
+                <p>{recommendationData.reasoning}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {currentTab === "news" && hasNews && (
+          <div className="modal-news-section">
+            <div className="modal-news-header">
+              <h3>Latest News</h3>
+              <span className="modal-news-count">
+                {newsItems.length} {newsItems.length === 1 ? "headline" : "headlines"}
+              </span>
+            </div>
+            <div className="modal-news-list">
+              {newsItems.map((item, idx) => (
+                <a
+                  key={`${item.link || idx}-${idx}`}
+                  href={item.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="modal-news-item"
+                >
+                  <span className="modal-news-title">{item.title}</span>
+                  <span className="modal-news-meta">
+                    {item.source}
+                    {item.publishedAt ? ` · ${item.publishedAt}` : ""}
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {currentTab === "analysis" && (
+          <div className="modal-tab-stack">
+            {hasSignals && (
+              <div className="recommendation-signals">
+                <h3>Key Signals</h3>
+                <ul>
+                  {recommendationData.signals.map((signal, idx) => (
+                    <li key={idx}>• {signal}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {hasAnalyst && <AnalystInsights analyst={analyst} />}
+          </div>
+        )}
+
+        {currentTab === "financials" && (
+          <FinancialsSection fundamentals={fundamentals} />
+        )}
+      </div>
+
+      <div className="recommendation-disclaimer">
+        <p>💡 This is an automated analysis for educational purposes only. Always do your own research before making investment decisions.</p>
+      </div>
+    </div>
+  );
+}
 
 export default function StockDashboard({ initialData, topGainers = [], mostActives = [] }) {
   const [board, setBoard] = useState(initialData);
@@ -97,6 +304,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   const [recommendationError, setRecommendationError] = useState("");
   const [chartRange, setChartRange] = useState("1mo");
   const [isLoadingChart, setIsLoadingChart] = useState(false);
+  const [activeModalTab, setActiveModalTab] = useState("summary");
   const [isWatchlistHydrated, setIsWatchlistHydrated] = useState(false);
   const [watchlistSyncStatus, setWatchlistSyncStatus] = useState("");
   const syncTimerRef = useRef(null);
@@ -428,6 +636,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   async function loadStockRecommendation(stock) {
     setSelectedStock(stock);
     setChartRange("1mo");
+    setActiveModalTab("summary");
     setIsLoadingRecommendation(true);
     setRecommendationError("");
     setRecommendationData(null);
@@ -490,35 +699,6 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
         onStockSelect={loadStockRecommendation}
       />
       <main className="page-shell" id="top">
-      <section className="hero-panel">
-        <div className="hero-copy">
-          <p className="eyebrow">Daily market radar</p>
-          <h1>Track the stocks everyone is watching before the opening bell fades.</h1>
-          <p className="hero-text">
-            The board blends live trending symbols with a personal watchlist saved on this device,
-            so you can return every day and keep the names that matter in view.
-          </p>
-        </div>
-
-        <div className="hero-actions">
-          <div className="search-box">
-            <label htmlFor="stock-search">Filter symbols</label>
-            <input
-              id="stock-search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search AAPL, NVDA, Tesla..."
-            />
-          </div>
-
-          <button className="refresh-button" onClick={refreshBoard} disabled={isRefreshing}>
-            {isRefreshing ? "Refreshing..." : "Refresh market board"}
-          </button>
-
-          <p className="status-copy">{statusMessage || `Source: ${board.source}`}</p>
-        </div>
-      </section>
-
       {tickerStocks.length > 0 && (
         <section className="stock-ticker" aria-label="Live stock ticker">
           <div className="stock-ticker-track">
@@ -803,36 +983,36 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                 </div>
               ) : (
                 <div className="watchlist-stack">
-                  {watchlistItems.map((item) => (
-                    <article className="watchlist-card" key={item.symbol}>
-                      <div className="watchlist-card-header">
-                        <div>
-                          <h3>{item.symbol}</h3>
-                          <p>{item.stock?.shortName || "Saved from a previous session"}</p>
-                        </div>
-                        <button className="ghost-button" onClick={() => toggleWatchlist(item.symbol)}>
-                          Remove
+                  {watchlistItems.map((item) => {
+                    const stock = item.stock || {
+                      symbol: item.symbol,
+                      shortName: item.symbol
+                    };
+                    return (
+                      <article className="watchlist-row" key={item.symbol}>
+                        <button
+                          type="button"
+                          className="watchlist-row-main"
+                          onClick={() => loadStockRecommendation(stock)}
+                          title={`Open analysis for ${item.symbol}`}
+                        >
+                          <span className="watchlist-row-symbol">{item.symbol}</span>
+                          <span className="watchlist-row-price">
+                            {formatMoney(item.stock?.regularMarketPrice)}
+                          </span>
                         </button>
-                      </div>
-
-                      <div className="watchlist-price-row">
-                        <strong>{formatMoney(item.stock?.regularMarketPrice)}</strong>
-                        <span className={`change-pill ${getChangeTone(item.stock?.marketChangePercent)}`}>
-                          {formatPercent(item.stock?.marketChangePercent)}
-                        </span>
-                      </div>
-
-                      <label className="notes-label" htmlFor={`note-${item.symbol}`}>
-                        Daily note
-                      </label>
-                      <textarea
-                        id={`note-${item.symbol}`}
-                        value={item.note}
-                        onChange={(event) => updateNote(item.symbol, event.target.value)}
-                        placeholder="Why is this one on your radar today?"
-                      />
-                    </article>
-                  ))}
+                        <button
+                          type="button"
+                          className="watchlist-row-remove"
+                          onClick={() => toggleWatchlist(item.symbol)}
+                          aria-label={`Remove ${item.symbol} from watchlist`}
+                          title={`Remove ${item.symbol}`}
+                        >
+                          ×
+                        </button>
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </>
@@ -915,92 +1095,14 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                 <p>⚠️ {recommendationError}</p>
               </div>
             ) : recommendationData ? (
-              <div className="recommendation-content">
-                <CandlestickChart
-                  history={recommendationData.history || []}
-                  currentRange={chartRange}
-                  onRangeChange={handleRangeChange}
-                  isLoading={isLoadingChart}
-                />
-
-                <div className="recommendation-reasoning">
-                  <h3>Analysis</h3>
-                  <p>{recommendationData.reasoning}</p>
-                </div>
-
-                {recommendationData.signals.length > 0 && (
-                  <div className="recommendation-signals">
-                    <h3>Key Signals</h3>
-                    <ul>
-                      {recommendationData.signals.map((signal, idx) => (
-                        <li key={idx}>• {signal}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                <div className="recommendation-metrics">
-                  <h3>Stock Metrics</h3>
-                  <div className="metrics-grid">
-                    <div className="metric">
-                      <span>Current Price</span>
-                      <strong>{formatMoney(recommendationData.indicators.price)}</strong>
-                    </div>
-                    <div className="metric">
-                      <span>Day Change</span>
-                      <strong className={getChangeTone(recommendationData.indicators.dayChange) === "up" ? "up" : "down"}>
-                        {formatPercent(recommendationData.indicators.dayChange)}
-                      </strong>
-                    </div>
-                    <div className="metric">
-                      <span>Volume</span>
-                      <strong>{formatCompact(recommendationData.indicators.volume)}</strong>
-                    </div>
-                    {recommendationData.indicators.pe && (
-                      <div className="metric">
-                        <span>P/E Ratio</span>
-                        <strong>{recommendationData.indicators.pe.toFixed(2)}</strong>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <AnalystInsights analyst={recommendationData.fundamentals?.analystInsights} />
-
-                <FinancialsSection fundamentals={recommendationData.fundamentals} />
-
-                <div className="recommendation-disclaimer">
-                  <p>💡 This is an automated analysis for educational purposes only. Always do your own research before making investment decisions.</p>
-                </div>
-
-                {recommendationData.news && recommendationData.news.length > 0 && (
-                  <div className="modal-news-section">
-                    <div className="modal-news-header">
-                      <h3>Latest News</h3>
-                      <span className="modal-news-count">
-                        {recommendationData.news.length} {recommendationData.news.length === 1 ? "headline" : "headlines"}
-                      </span>
-                    </div>
-                    <div className="modal-news-list">
-                      {recommendationData.news.map((item, idx) => (
-                        <a
-                          key={`${item.link || idx}-${idx}`}
-                          href={item.link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="modal-news-item"
-                        >
-                          <span className="modal-news-title">{item.title}</span>
-                          <span className="modal-news-meta">
-                            {item.source}
-                            {item.publishedAt ? ` · ${item.publishedAt}` : ""}
-                          </span>
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <ModalTabbedContent
+                recommendationData={recommendationData}
+                chartRange={chartRange}
+                onRangeChange={handleRangeChange}
+                isLoadingChart={isLoadingChart}
+                activeTab={activeModalTab}
+                setActiveTab={setActiveModalTab}
+              />
             ) : null}
           </div>
         </div>

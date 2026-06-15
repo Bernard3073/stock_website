@@ -1,8 +1,9 @@
 # Market Current
 
-A small Next.js site for checking trending stocks each day, keeping a local watchlist
-with notes, and drilling into a stock for a full TradingView-style chart, technical
-recommendation, and a fundamentals view (income statement + earnings).
+A small Next.js site for checking trending stocks each day, keeping a personal
+watchlist (per-account, signed in with Google or email/password), and drilling
+into a stock for a full TradingView-style chart, technical recommendation,
+analyst insights, and a fundamentals view (income statement + earnings).
 
 ## Requirements
 
@@ -18,30 +19,64 @@ nvm use 20
 
 ## Environment variables
 
-Email/password sign-up works with **zero env vars** out of the box. To enable Google
-sign-in and to satisfy NextAuth.js's session signing, add the following to
-`.env.local` in the project root:
+The app needs a database (Turso) and a session secret to run. Google sign-in is
+optional. Add the following to `.env.local` in the project root:
 
-| Variable                 | Purpose                                                                                            | Required?                |
-| ------------------------ | -------------------------------------------------------------------------------------------------- | ------------------------ |
-| `NEXTAUTH_SECRET`        | Secret used to sign session JWTs. Generate with `openssl rand -base64 32`.                          | **Required** (any deploy)|
+| Variable                 | Purpose                                                                                            | Required? |
+| ------------------------ | -------------------------------------------------------------------------------------------------- | --------- |
+| `TURSO_DATABASE_URL`     | libSQL database URL from `turso db show <name> --url`, e.g. `libsql://foo.turso.io`.               | **Required** |
+| `TURSO_AUTH_TOKEN`       | Database auth token from `turso db tokens create <name>`.                                          | **Required** (remote DB) |
+| `NEXTAUTH_SECRET`        | Secret used to sign session JWTs. Generate with `openssl rand -base64 32`.                          | **Required** |
 | `NEXTAUTH_URL`           | Public URL of the site, e.g. `http://localhost:3000` in dev.                                       | **Required** in production |
-| `GOOGLE_CLIENT_ID`       | OAuth client id from Google Cloud Console. Without it the "Continue with Google" button is hidden. | Optional                 |
-| `GOOGLE_CLIENT_SECRET`   | OAuth client secret matching the above.                                                            | Optional                 |
-| `WATCHLIST_DB_PATH`      | Override the default SQLite path (`data/market-current.db`).                                       | Optional                 |
+| `GOOGLE_CLIENT_ID`       | OAuth client id from Google Cloud Console. Without it the "Continue with Google" button is hidden. | Optional  |
+| `GOOGLE_CLIENT_SECRET`   | OAuth client secret matching the above.                                                            | Optional  |
 
 A starter `.env.local`:
 
 ```ini
-NEXTAUTH_SECRET=replace-with-output-of-openssl-rand-base64-32
+# Database
+TURSO_DATABASE_URL=libsql://<your-db-name>-<your-user>.turso.io
+TURSO_AUTH_TOKEN=<long jwt from `turso db tokens create`>
+
+# Auth
+NEXTAUTH_SECRET=<output of `openssl rand -base64 32`>
 NEXTAUTH_URL=http://localhost:3000
+
 # Optional — enables the Google sign-in button
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 ```
 
 `.env.local` is gitignored. Next.js auto-loads it on every `npm run dev` /
 `npm run build` / `npm start`.
+
+### Setting up the Turso database (one-time, free)
+
+The watchlist + user accounts live in [Turso](https://turso.tech/) — a hosted
+libSQL service (SQLite-compatible). Free tier covers way more than this app needs.
+
+```bash
+# 1. Install the Turso CLI
+curl -sSfL https://get.tur.so/install.sh | bash
+
+# 2. Sign up / sign in (opens browser, GitHub or Google OAuth)
+turso auth signup        # first time
+# or
+turso auth login         # if you already have an account
+
+# 3. Create a database
+turso db create stock-website
+
+# 4. Get the connection URL — copy into TURSO_DATABASE_URL
+turso db show stock-website --url
+
+# 5. Generate an auth token — copy into TURSO_AUTH_TOKEN
+turso db tokens create stock-website
+```
+
+Schema (`users` + `watchlist_entries`) auto-creates on first DB call — nothing
+else to run. You can inspect the data anytime with `turso db shell stock-website`
+then `SELECT email, provider FROM users;`.
 
 ### Setting up Google OAuth (optional but nice)
 
@@ -51,6 +86,11 @@ GOOGLE_CLIENT_SECRET=...
 4. **Authorized redirect URIs:** `http://localhost:3000/api/auth/callback/google` (and the production equivalent).
 5. Copy the client id + secret into `.env.local` as shown above.
 6. Restart `npm run dev` — the Google button on `/login` will light up.
+7. To let any Google account sign in (not just test users), go to **OAuth consent
+   screen** → click **PUBLISH APP** so the app status flips from Testing to In
+   production. Users will see an "unverified app" warning until you go through
+   Google's verification flow — for personal/small projects that's fine, they
+   can click "Advanced → Continue".
 
 ## Run locally
 
@@ -107,6 +147,45 @@ away — on this project it will silently roll Next.js back to a 6-year-old rele
 and break everything. The "vulnerability" warnings on a clean install come from
 transitive dev-only dependencies of Next.js itself; they are not exploitable in
 your code and are tracked upstream. Plain `npm audit fix` (no flag) is safe.
+
+## Deploy to Vercel
+
+1. **Push the repo to GitHub** and import it in [vercel.com/new](https://vercel.com/new).
+   Vercel auto-detects Next.js — accept the defaults.
+
+2. **Set environment variables** in **Vercel → Project → Settings → Environment Variables**.
+   For each variable below, **tick all three scopes** (Production, Preview, Development):
+
+   | Name                    | Value                                                |
+   | ----------------------- | ---------------------------------------------------- |
+   | `TURSO_DATABASE_URL`    | from `turso db show <name> --url`                    |
+   | `TURSO_AUTH_TOKEN`      | from `turso db tokens create <name>`                 |
+   | `NEXTAUTH_SECRET`       | from `openssl rand -base64 32`                       |
+   | `NEXTAUTH_URL`          | your Vercel URL, e.g. `https://your-app.vercel.app` |
+   | `GOOGLE_CLIENT_ID`      | (optional) Google OAuth client id                   |
+   | `GOOGLE_CLIENT_SECRET`  | (optional) Google OAuth client secret               |
+
+3. **Update Google Cloud Console** (only if using Google sign-in) — add the production
+   URL to both Authorized JavaScript origins and Authorized redirect URIs on your OAuth
+   client:
+   - `https://your-app.vercel.app`
+   - `https://your-app.vercel.app/api/auth/callback/google`
+   Keep your `http://localhost:3000` entries too so local dev still works.
+
+4. **Trigger a fresh build.** Env vars added after a deploy don't apply retroactively:
+   Deployments tab → latest row → **⋯ → Redeploy** (uncheck "Use existing Build Cache"
+   to be safe).
+
+### Common deploy issues
+
+- **`[NO_SECRET] Please define a 'secret' in production`** in the Vercel logs →
+  `NEXTAUTH_SECRET` isn't set on Vercel (or wasn't ticked for Production scope). Set it,
+  redeploy.
+- **`ENOENT: mkdir '/var/task/data'`** → you're still on the old `better-sqlite3` code
+  that tries to write to the local filesystem. Make sure you're on the `@libsql/client`
+  version of `lib/db.js` and that `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` are both set.
+- **`redirect_uri_mismatch`** from Google → the URL on your Vercel deployment isn't in
+  your OAuth client's Authorized redirect URIs. Add it exactly.
 
 ## Auto-refresh schedule (news brief)
 
@@ -181,7 +260,7 @@ the dropdowns are never empty.
 - Type-ahead symbol search backed by Yahoo Finance's search endpoint.
 
 ### Right sidebar
-- **Watchlist** with notes — synced live to the SQLite database (see Watchlist persistence below).
+- **Watchlist** with notes — synced live to your account in the Turso DB (see Accounts & watchlist persistence below).
 - **Trending** preview — the top 5 trending tickers from the board, click to open the analysis modal.
 - **Top Gainers** preview — top 5 movers from the Yahoo `day_gainers` screener.
 
@@ -233,30 +312,29 @@ Clicking **View Analysis & Recommendation** on any stock opens a detailed panel 
   via [lib/analytics.js](lib/analytics.js) — useful as a hook point if you later wire up a
   real analytics service.
 
-### Watchlist persistence
-The watchlist is now backed by a server-side SQLite database so symbols and notes survive
-clearing browser storage, switching browsers on the same device that gets the same device id,
-or any other case where `localStorage` is wiped.
+### Accounts & watchlist persistence
 
-- **Storage:** [`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) backed by a
-  single file at `data/market-current.db` (path overridable via `WATCHLIST_DB_PATH`).
-- **Identity:** Each browser generates an anonymous UUID on first load and stores it under
-  `market-current-device-id` in `localStorage`. The id is sent on every watchlist request via
-  the `x-device-id` header. No login required.
-- **Schema:** `watchlist_entries(device_id, symbol, note, added_at, updated_at)` with a
-  composite primary key on `(device_id, symbol)`.
-- **API:** [pages/api/watchlist.js](pages/api/watchlist.js) exposes:
-  - `GET /api/watchlist` — returns the device's saved entries
-  - `PUT /api/watchlist` with `{ entries: [...] }` — replaces the device's entries atomically
-- **Sync behavior:** On mount the client fetches server state; if the server is empty but
-  `localStorage` has a watchlist, the local copy is migrated up. After hydration, every
-  watchlist mutation triggers a debounced (600ms) PUT, with `localStorage` kept as an offline
-  cache. A small status pill in the watchlist header confirms each save.
+User accounts and watchlists are stored in a hosted libSQL database via
+[Turso](https://turso.tech/). Works locally and in serverless (Vercel) without code
+changes — the same DB serves both.
 
-> The default SQLite file works perfectly for local dev and self-hosted deployments. **It will
-> not persist on Vercel** (their serverless functions run on a read-only filesystem); for
-> Vercel, swap `lib/db.js` for a managed provider like Vercel Postgres, Vercel KV, or
-> [Turso](https://turso.tech/) (libsql, drop-in API-compatible with better-sqlite3).
+- **Auth:** [NextAuth.js v4](https://next-auth.js.org/) with two providers wired up in
+  [lib/auth-options.js](lib/auth-options.js):
+  - **Credentials** — email/password, hashed with `bcryptjs`
+  - **Google OAuth** — auto-enabled when `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` are set
+- **Session strategy:** JWT (no separate sessions table required)
+- **DB client:** [`@libsql/client`](https://github.com/tursodatabase/libsql-client-ts).
+  Schema is created on first call by [lib/db.js](lib/db.js) — nothing to migrate manually:
+  - `users(id, email UNIQUE, name, image, password_hash, provider, created_at)`
+  - `watchlist_entries(user_id, symbol, note, added_at, updated_at)` with composite PK on `(user_id, symbol)`
+- **API:** [pages/api/watchlist.js](pages/api/watchlist.js) — both endpoints require a
+  signed-in session (401 otherwise):
+  - `GET /api/watchlist` → user's saved entries
+  - `PUT /api/watchlist` with `{ entries: [...] }` → atomically replaces them
+- **Client behavior:** On login/sign-up, [components/stock-dashboard.jsx](components/stock-dashboard.jsx)
+  hydrates the watchlist from `/api/watchlist`. Subsequent mutations are debounced (600ms)
+  and PUT back. A small status pill confirms each save. Anonymous visitors see a
+  "Sign in to save your watchlist" card in place of the form.
 
 ## Project layout
 
@@ -270,17 +348,23 @@ components/
 lib/
   stocks.js                 Yahoo Finance data layer (quotes, history, fundamentals)
   analytics.js              Recommendation scoring + client-side event logger
-  db.js                     SQLite (better-sqlite3) — watchlist persistence
+  db.js                     Turso (libSQL) — users + watchlist persistence
+  auth-options.js           NextAuth providers + callbacks (Google + Credentials)
   news-brief.js             Static daily news brief — edit by hand or via Claude Code
 pages/
   index.js                  Home page (SSR'd trending board)
-  _app.js                   App shell
+  _app.js                   App shell wrapped in <SessionProvider>
+  _document.js              Pre-hydration script that applies the saved theme
+  login.js                  Sign-in / sign-up page (Google + email/password)
   api/
     trending.js             /api/trending — refresh the board
     quote.js                /api/quote — single-symbol quote
     search.js               /api/search — symbol type-ahead
     analytics.js            /api/analytics — chart history + recommendation + fundamentals
-    watchlist.js            /api/watchlist — load / save per-device watchlist
+    watchlist.js            /api/watchlist — load / save the signed-in user's watchlist
+    auth/
+      [...nextauth].js      NextAuth catch-all (Google + Credentials providers)
+      register.js           Email/password sign-up endpoint
 styles/
   globals.css               All styles (no CSS framework)
 scripts/
@@ -288,7 +372,6 @@ scripts/
 .github/
   workflows/
     refresh-brief.yml       Cron workflow that runs the refresh script + commits
-data/                       SQLite database lives here (gitignored, auto-created)
 ```
 
 ## Data sources

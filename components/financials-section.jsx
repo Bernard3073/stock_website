@@ -1,6 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+
+function formatPeriodLabel(endDate, view) {
+  if (!endDate) return "—";
+  if (view === "annual") {
+    return endDate.slice(0, 4);
+  }
+  const d = new Date(endDate);
+  if (Number.isNaN(d.getTime())) return endDate;
+  return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+}
 
 const CHART_W = 560;
 const CHART_H = 220;
@@ -161,27 +171,132 @@ export function FinancialsSection({ fundamentals }) {
   }
 
   const annualFin = fundamentals.annualFinancials || [];
+  const quarterlyFin = fundamentals.quarterlyFinancials || [];
   const quarterlyEarnings = fundamentals.quarterlyEarnings || [];
   const annualIncome = fundamentals.annualIncome || [];
+  const quarterlyIncome = fundamentals.quarterlyIncome || [];
+
+  const hasAnnual = annualFin.length > 0 || annualIncome.length > 0;
+  const hasQuarterly =
+    quarterlyFin.length > 0 || quarterlyIncome.length > 0 || quarterlyEarnings.length > 0;
+
+  const [view, setView] = useState(hasAnnual ? "annual" : "quarterly");
+  const safeView = view === "quarterly" && hasQuarterly ? "quarterly" : hasAnnual ? "annual" : view;
+
+  if (!hasAnnual && !hasQuarterly) {
+    return (
+      <div className="financials-section">
+        <h3>Income Statement &amp; Earnings</h3>
+        <p className="financials-unavailable">
+          No income statement data returned for this symbol.
+        </p>
+      </div>
+    );
+  }
+
+  // Chart data: oldest → newest for time-series visualization.
+  const chartData =
+    safeView === "annual"
+      ? annualFin
+      : [...quarterlyFin].slice(0, 8).reverse().map((q) => ({ ...q, date: q.date }));
+
+  // Income statement columns: keep Yahoo's order (newest → oldest, left to right).
+  const statements = safeView === "annual" ? annualIncome : quarterlyIncome.slice(0, 4);
+  const periodLabel = safeView === "annual" ? "Annual" : "Quarterly";
 
   return (
     <div className="financials-section">
-      <h3>Income Statement &amp; Earnings</h3>
+      <div className="financials-section-header">
+        <h3>Income Statement &amp; Earnings</h3>
+        <div className="financials-view-toggle" role="tablist" aria-label="Period">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={safeView === "annual"}
+            className={`financials-view-btn${safeView === "annual" ? " active" : ""}`}
+            onClick={() => setView("annual")}
+            disabled={!hasAnnual}
+          >
+            Annual
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={safeView === "quarterly"}
+            className={`financials-view-btn${safeView === "quarterly" ? " active" : ""}`}
+            onClick={() => setView("quarterly")}
+            disabled={!hasQuarterly}
+          >
+            Quarterly
+          </button>
+        </div>
+      </div>
 
-      {annualFin.length > 0 && (
+      {chartData.length > 0 && (
         <div className="financials-block">
           <div className="financials-block-header">
-            <h4>Annual Revenue &amp; Net Income</h4>
+            <h4>{periodLabel} Revenue &amp; Net Income</h4>
             <div className="financials-legend">
               <span><i style={{ background: "#1d8b84" }} /> Revenue</span>
               <span><i style={{ background: "#f07d3a" }} /> Net Income</span>
             </div>
           </div>
-          <AnnualFinancialsChart years={annualFin} />
+          <AnnualFinancialsChart years={chartData} />
         </div>
       )}
 
-      {quarterlyEarnings.length > 0 && (
+      {statements.length > 0 && (
+        <div className="financials-block">
+          <h4>{periodLabel} Income Statement</h4>
+          <div className="financials-table-wrap">
+            <table className="financials-table income-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  {statements.map((s, i) => (
+                    <th key={i} className="num">
+                      {formatPeriodLabel(s.endDate, safeView) || `P${i + 1}`}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Total Revenue</td>
+                  {statements.map((s, i) => (
+                    <td key={i} className="num">{fmtMoney(s.totalRevenue)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Gross Profit</td>
+                  {statements.map((s, i) => (
+                    <td key={i} className="num">{fmtMoney(s.grossProfit)}</td>
+                  ))}
+                </tr>
+                <tr>
+                  <td>Operating Income</td>
+                  {statements.map((s, i) => (
+                    <td key={i} className="num">{fmtMoney(s.operatingIncome)}</td>
+                  ))}
+                </tr>
+                <tr className="highlight-row">
+                  <td>Net Income</td>
+                  {statements.map((s, i) => (
+                    <td
+                      key={i}
+                      className={`num ${(s.netIncome ?? 0) >= 0 ? "up" : "down"}`}
+                    >
+                      {fmtMoney(s.netIncome)}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {safeView === "quarterly" && quarterlyEarnings.length > 0 && (
         <div className="financials-block">
           <h4>Quarterly Earnings (EPS)</h4>
           <div className="financials-table-wrap">
@@ -214,63 +329,6 @@ export function FinancialsSection({ fundamentals }) {
             </table>
           </div>
         </div>
-      )}
-
-      {annualIncome.length > 0 && (
-        <div className="financials-block">
-          <h4>Annual Income Statement</h4>
-          <div className="financials-table-wrap">
-            <table className="financials-table income-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  {annualIncome.map((s, i) => (
-                    <th key={i} className="num">
-                      {s.endDate ? s.endDate.slice(0, 4) : `Y${i + 1}`}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Total Revenue</td>
-                  {annualIncome.map((s, i) => (
-                    <td key={i} className="num">{fmtMoney(s.totalRevenue)}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Gross Profit</td>
-                  {annualIncome.map((s, i) => (
-                    <td key={i} className="num">{fmtMoney(s.grossProfit)}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <td>Operating Income</td>
-                  {annualIncome.map((s, i) => (
-                    <td key={i} className="num">{fmtMoney(s.operatingIncome)}</td>
-                  ))}
-                </tr>
-                <tr className="highlight-row">
-                  <td>Net Income</td>
-                  {annualIncome.map((s, i) => (
-                    <td
-                      key={i}
-                      className={`num ${(s.netIncome ?? 0) >= 0 ? "up" : "down"}`}
-                    >
-                      {fmtMoney(s.netIncome)}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {annualFin.length === 0 && quarterlyEarnings.length === 0 && annualIncome.length === 0 && (
-        <p className="financials-unavailable">
-          No income statement data returned for this symbol.
-        </p>
       )}
     </div>
   );
