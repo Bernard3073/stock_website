@@ -2793,24 +2793,36 @@ button {
   justify-content: center;
   width: var(--company-icon-size, 32px);
   height: var(--company-icon-size, 32px);
-  border-radius: calc(var(--company-icon-size, 32px) * 0.28);
+  border-radius: calc(var(--company-icon-size, 32px) * 0.26);
   overflow: hidden;
   background: hsl(var(--company-icon-hue, 200) 45% 92%);
   border: 1px solid var(--line);
-  box-shadow: 0 1px 2px rgba(var(--ink-rgb), 0.06);
   user-select: none;
 }
 
 [data-theme="dark"] .company-icon {
   background: hsl(var(--company-icon-hue, 200) 28% 24%);
+}
+
+/* Brand marks are drawn for their own background and are often dark or
+   transparent, so a real logo always sits on a light chip — in both themes. */
+.company-icon.has-logo {
+  background: #ffffff;
+  border-color: rgba(var(--ink-rgb), 0.1);
+  box-shadow: 0 1px 2px rgba(17, 32, 26, 0.08);
+}
+
+[data-theme="dark"] .company-icon.has-logo {
+  background: #f6f7f5;
+  border-color: rgba(255, 255, 255, 0.16);
   box-shadow: none;
 }
 
 .company-icon img {
-  width: 72%;
-  height: 72%;
+  width: 100%;
+  height: 100%;
+  padding: calc(var(--company-icon-size, 32px) * 0.14);
   object-fit: contain;
-  border-radius: 3px;
 }
 
 .company-icon-monogram {
