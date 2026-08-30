@@ -8,6 +8,7 @@ import { CandlestickChart } from "./trading-chart";
 import { FinancialsSection } from "./financials-section";
 import { TopBar } from "./top-bar";
 import { AnalystInsights } from "./analyst-insights";
+import { CompanyIcon } from "./company-icon";
 import { NEWS_BRIEFS, BRIEF_GENERATED_AT } from "../lib/news-brief";
 
 const SYNC_DEBOUNCE_MS = 600;
@@ -469,7 +470,8 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
       marketChangePercent: item.stock?.marketChangePercent,
       regularMarketVolume: item.stock?.regularMarketVolume,
       regularMarketDayLow: item.stock?.regularMarketDayLow,
-      regularMarketDayHigh: item.stock?.regularMarketDayHigh
+      regularMarketDayHigh: item.stock?.regularMarketDayHigh,
+      website: item.stock?.website
     }));
   }, [watchlistItems]);
 
@@ -709,6 +711,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                 className="ticker-item"
                 onClick={() => loadStockRecommendation(stock)}
               >
+                <CompanyIcon symbol={stock.symbol} name={stock.shortName} website={stock.website} size={20} />
                 <span className="ticker-symbol">{stock.symbol}</span>
                 <span className="ticker-price">{formatMoney(stock.regularMarketPrice)}</span>
                 <span className={`ticker-change ${getChangeTone(stock.marketChangePercent)}`}>
@@ -845,12 +848,20 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                         aria-label={`Open analysis for ${stock.symbol} ${stock.shortName}`}
                       >
                         <div className="stock-card-top">
-                          <div>
-                            <div className="stock-symbol-row">
-                              <span className="stock-rank">#{stock.rank}</span>
-                              <h3>{stock.symbol}</h3>
+                          <div className="stock-card-identity">
+                            <CompanyIcon
+                              symbol={stock.symbol}
+                              name={stock.shortName}
+                              website={stock.website}
+                              size={40}
+                            />
+                            <div className="stock-card-identity-text">
+                              <div className="stock-symbol-row">
+                                <span className="stock-rank">#{stock.rank}</span>
+                                <h3>{stock.symbol}</h3>
+                              </div>
+                              <p className="stock-name">{stock.shortName}</p>
                             </div>
-                            <p className="stock-name">{stock.shortName}</p>
                           </div>
 
                           {isAuthenticated ? (
@@ -957,6 +968,11 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                               }}
                               type="button"
                             >
+                              <CompanyIcon
+                                symbol={suggestion.symbol}
+                                name={suggestion.shortName}
+                                size={24}
+                              />
                               <span className="suggestion-symbol">{suggestion.symbol}</span>
                               <span className="suggestion-name">{suggestion.shortName}</span>
                               <span className="suggestion-meta">{suggestion.exchange}</span>
@@ -996,6 +1012,12 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                           onClick={() => loadStockRecommendation(stock)}
                           title={`Open analysis for ${item.symbol}`}
                         >
+                          <CompanyIcon
+                            symbol={item.symbol}
+                            name={item.stock?.shortName}
+                            website={item.stock?.website}
+                            size={26}
+                          />
                           <span className="watchlist-row-symbol">{item.symbol}</span>
                           <span className="watchlist-row-price">
                             {formatMoney(item.stock?.regularMarketPrice)}
@@ -1036,6 +1058,12 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                       className="sidebar-stock-row"
                       onClick={() => loadStockRecommendation(stock)}
                     >
+                      <CompanyIcon
+                        symbol={stock.symbol}
+                        name={stock.shortName}
+                        website={stock.website}
+                        size={24}
+                      />
                       <span className="sidebar-stock-symbol">{stock.symbol}</span>
                       <span className="sidebar-stock-name">{stock.shortName}</span>
                       <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
@@ -1061,6 +1089,12 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                       className="sidebar-stock-row"
                       onClick={() => loadStockRecommendation(stock)}
                     >
+                      <CompanyIcon
+                        symbol={stock.symbol}
+                        name={stock.shortName}
+                        website={stock.website}
+                        size={24}
+                      />
                       <span className="sidebar-stock-symbol">{stock.symbol}</span>
                       <span className="sidebar-stock-name">{stock.shortName}</span>
                       <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
@@ -1079,9 +1113,20 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
         <div className="recommendation-modal-overlay" onClick={closeRecommendation}>
           <div className="recommendation-modal" onClick={(e) => e.stopPropagation()}>
             <div className="recommendation-header">
-              <div>
-                <h2>{selectedStock.symbol}</h2>
-                <p>{selectedStock.shortName}</p>
+              <div className="recommendation-identity">
+                <CompanyIcon
+                  symbol={selectedStock.symbol}
+                  name={selectedStock.shortName}
+                  website={
+                    recommendationData?.fundamentals?.companyProfile?.website ||
+                    selectedStock.website
+                  }
+                  size={48}
+                />
+                <div>
+                  <h2>{selectedStock.symbol}</h2>
+                  <p>{selectedStock.shortName}</p>
+                </div>
               </div>
               <button className="close-button" onClick={closeRecommendation}>✕</button>
             </div>

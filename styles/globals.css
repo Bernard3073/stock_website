@@ -578,7 +578,6 @@ button {
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   padding: 9px 12px;
   border: 0;
@@ -602,6 +601,7 @@ button {
 }
 
 .watchlist-row-price {
+  margin-left: auto;
   font-variant-numeric: tabular-nums;
   font-size: 0.92rem;
   color: var(--ink);
@@ -842,7 +842,7 @@ button {
 
 .suggestion-item {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto 1fr auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -1427,7 +1427,7 @@ button {
 
 .top-bar-stock-row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   gap: 12px;
   align-items: center;
   width: 100%;
@@ -2354,7 +2354,7 @@ button {
 
 .sidebar-stock-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -2783,4 +2783,63 @@ button {
   .rating-gauge-labels {
     font-size: 0.62rem;
   }
+}
+/* Company icons ---------------------------------------------------------- */
+
+.company-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--company-icon-size, 32px);
+  height: var(--company-icon-size, 32px);
+  border-radius: calc(var(--company-icon-size, 32px) * 0.28);
+  overflow: hidden;
+  background: hsl(var(--company-icon-hue, 200) 45% 92%);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgba(var(--ink-rgb), 0.06);
+  user-select: none;
+}
+
+[data-theme="dark"] .company-icon {
+  background: hsl(var(--company-icon-hue, 200) 28% 24%);
+  box-shadow: none;
+}
+
+.company-icon img {
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+  border-radius: 3px;
+}
+
+.company-icon-monogram {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: calc(var(--company-icon-size, 32px) * 0.4);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: hsl(var(--company-icon-hue, 200) 55% 28%);
+}
+
+[data-theme="dark"] .company-icon-monogram {
+  color: hsl(var(--company-icon-hue, 200) 60% 82%);
+}
+
+.stock-card-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.stock-card-identity-text {
+  min-width: 0;
+}
+
+.recommendation-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
 }

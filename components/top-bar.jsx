@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
+import { CompanyIcon } from "./company-icon";
 
 const THEME_STORAGE_KEY = "market-current-theme";
 
@@ -69,6 +70,12 @@ function StockDropdownRow({ stock, onSelect }) {
       className="top-bar-stock-row"
       onClick={() => onSelect(stock)}
     >
+      <CompanyIcon
+        symbol={stock.symbol}
+        name={stock.shortName}
+        website={stock.website}
+        size={24}
+      />
       <span className="top-bar-stock-symbol">{stock.symbol}</span>
       <span className="top-bar-stock-name">{stock.shortName}</span>
       <span className="top-bar-stock-price">{formatMoney(stock.regularMarketPrice)}</span>
