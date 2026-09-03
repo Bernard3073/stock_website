@@ -30,6 +30,7 @@ optional. Add the following to `.env.local` in the project root:
 | `NEXTAUTH_URL`           | Public URL of the site, e.g. `http://localhost:3000` in dev.                                       | **Required** in production |
 | `GOOGLE_CLIENT_ID`       | OAuth client id from Google Cloud Console. Without it the "Continue with Google" button is hidden. | Optional  |
 | `GOOGLE_CLIENT_SECRET`   | OAuth client secret matching the above.                                                            | Optional  |
+| `NEXT_PUBLIC_LOGO_DEV_TOKEN` | [logo.dev](https://logo.dev) publishable token (`pk_...`). Fills in company logos for tickers with no bundled mark — see **Company logos**. | Optional  |
 
 A starter `.env.local`:
 
@@ -45,6 +46,9 @@ NEXTAUTH_URL=http://localhost:3000
 # Optional — enables the Google sign-in button
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Optional — widens company logo coverage beyond the bundled marks
+NEXT_PUBLIC_LOGO_DEV_TOKEN=
 ```
 
 `.env.local` is gitignored. Next.js auto-loads it on every `npm run dev` /
@@ -391,6 +395,37 @@ All data comes directly from Yahoo Finance's public endpoints; no API key is req
   the modal gracefully hides the analyst and financials sections while the rest of the
   analysis continues to work.
 - **Headlines:** Google News RSS, queried per ticker.
+
+## Company logos
+
+Every stock is shown with its company's brand mark. Sources are tried in order
+and each falls through to the next if the image fails to load, ending at a
+monogram tile built from the ticker:
+
+1. **Bundled marks** — ~120 tickers have a real logo committed under
+   `public/brand-marks/<SYMBOL>.svg`. These are vector, need no network, and are
+   the only source guaranteed to work. Generated from
+   [simple-icons](https://simple-icons.org) (CC0-1.0):
+
+   ```bash
+   npm run build-brand-marks   # after editing scripts/generate-brand-marks.mjs
+   ```
+
+   Edit `SLUG_BY_SYMBOL` in that script to add a ticker. The generator fails
+   loudly on an unknown slug rather than guessing — an earlier fuzzy match
+   silently gave Union Pacific the UPS logo.
+
+2. **logo.dev**, by ticker — only when `NEXT_PUBLIC_LOGO_DEV_TOKEN` is set, and
+   off by default. This is the one source that covers the whole market,
+   including large caps no free icon set carries (Disney, PepsiCo, JPMorgan,
+   Costco, Exxon, Pfizer). Setting a publishable token is what closes the gap
+   left by the bundled set.
+
+3. **Parqet**, by ticker, then **DuckDuckGo** and **Google** favicons, by the
+   company's domain. Keyless but unverified, and favicon fidelity is low.
+
+Trademarks belong to their owners; the marks identify the company behind a
+ticker.
 
 ## Notes
 
