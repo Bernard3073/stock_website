@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "refresh-brief": "node scripts/refresh-news-brief.mjs"
+    "refresh-brief": "node scripts/refresh-news-brief.mjs",
+    "build-brand-marks": "node scripts/generate-brand-marks.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
@@ -19,5 +20,8 @@
   },
   "engines": {
     "node": ">=20.9.0"
+  },
+  "devDependencies": {
+    "simple-icons": "^16.29.0"
   }
 }
