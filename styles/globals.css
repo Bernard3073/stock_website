@@ -721,6 +721,36 @@ button {
   justify-content: flex-start;
 }
 
+.stock-card-identity,
+.recommendation-identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.company-logo {
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  object-fit: contain;
+  padding: 4px;
+}
+
+.company-logo-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-color: transparent;
+  color: #fff;
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
 .stock-rank {
   display: inline-flex;
   align-items: center;

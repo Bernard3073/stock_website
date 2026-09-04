@@ -8,6 +8,7 @@ import { CandlestickChart } from "./trading-chart";
 import { FinancialsSection } from "./financials-section";
 import { TopBar } from "./top-bar";
 import { AnalystInsights } from "./analyst-insights";
+import CompanyLogo from "./company-logo";
 import { NEWS_BRIEFS, BRIEF_GENERATED_AT } from "../lib/news-brief";
 
 const SYNC_DEBOUNCE_MS = 600;
@@ -852,12 +853,20 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
                   aria-label={`Open analysis for ${stock.symbol} ${stock.shortName}`}
                 >
                   <div className="stock-card-top">
-                    <div>
-                      <div className="stock-symbol-row">
-                        <span className="stock-rank">#{stock.rank}</span>
-                        <h3>{stock.symbol}</h3>
+                    <div className="stock-card-identity">
+                      <CompanyLogo
+                        symbol={stock.symbol}
+                        name={stock.shortName}
+                        domain={stock.domain}
+                        size={36}
+                      />
+                      <div>
+                        <div className="stock-symbol-row">
+                          <span className="stock-rank">#{stock.rank}</span>
+                          <h3>{stock.symbol}</h3>
+                        </div>
+                        <p className="stock-name">{stock.shortName}</p>
                       </div>
-                      <p className="stock-name">{stock.shortName}</p>
                     </div>
 
                     {isAuthenticated ? (
@@ -1031,9 +1040,20 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
         <div className="recommendation-modal-overlay" onClick={closeRecommendation}>
           <div className="recommendation-modal" onClick={(e) => e.stopPropagation()}>
             <div className="recommendation-header">
-              <div>
-                <h2>{selectedStock.symbol}</h2>
-                <p>{selectedStock.shortName}</p>
+              <div className="recommendation-identity">
+                <CompanyLogo
+                  symbol={selectedStock.symbol}
+                  name={selectedStock.shortName}
+                  domain={
+                    recommendationData?.fundamentals?.companyProfile?.domain ||
+                    selectedStock.domain
+                  }
+                  size={44}
+                />
+                <div>
+                  <h2>{selectedStock.symbol}</h2>
+                  <p>{selectedStock.shortName}</p>
+                </div>
               </div>
               <button className="close-button" onClick={closeRecommendation}>✕</button>
             </div>
