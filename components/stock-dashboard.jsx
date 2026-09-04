@@ -11,6 +11,7 @@ import { AnalystInsights } from "./analyst-insights";
 import { NEWS_BRIEFS, BRIEF_GENERATED_AT } from "../lib/news-brief";
 
 const SYNC_DEBOUNCE_MS = 600;
+const TICKER_SIZE = 15;
 
 function watchlistObjectToArray(map) {
   return Object.entries(map).map(([symbol, entry]) => ({
@@ -291,6 +292,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
   const [board, setBoard] = useState(initialData);
   const [watchlist, setWatchlist] = useState({});
   const [query, setQuery] = useState("");
+  const [boardTab, setBoardTab] = useState("trending");
   const [symbolInput, setSymbolInput] = useState("");
   const [symbolSuggestions, setSymbolSuggestions] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -415,36 +417,33 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
     return () => window.clearTimeout(timeoutId);
   }, [symbolInput]);
 
+  const boardTabs = useMemo(() => {
+    return [
+      { id: "trending", label: "Trending", stocks: board.stocks || [] },
+      { id: "gainers", label: "Top Gainers", stocks: topGainers || [] },
+      { id: "actives", label: "Most Active", stocks: mostActives || [] }
+    ].filter((tab) => tab.stocks.length > 0);
+  }, [board.stocks, topGainers, mostActives]);
+
+  const activeBoard = useMemo(() => {
+    return boardTabs.find((tab) => tab.id === boardTab) || boardTabs[0] || null;
+  }, [boardTabs, boardTab]);
+
   const visibleStocks = useMemo(() => {
+    const stocks = activeBoard ? activeBoard.stocks : [];
     const normalizedQuery = query.trim().toLowerCase();
 
     if (!normalizedQuery) {
-      return board.stocks;
+      return stocks;
     }
 
-    return board.stocks.filter((stock) => {
+    return stocks.filter((stock) => {
       return (
         stock.symbol.toLowerCase().includes(normalizedQuery) ||
-        stock.shortName.toLowerCase().includes(normalizedQuery)
+        (stock.shortName || "").toLowerCase().includes(normalizedQuery)
       );
     });
-  }, [board.stocks, query]);
-
-  const groupedStocks = useMemo(() => {
-    const groups = new Map();
-    for (const stock of visibleStocks) {
-      const key = stock.industry || stock.sector || "Uncategorized";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(stock);
-    }
-    return Array.from(groups.entries())
-      .sort((a, b) => {
-        if (a[0] === "Uncategorized") return 1;
-        if (b[0] === "Uncategorized") return -1;
-        return b[1].length - a[1].length;
-      })
-      .map(([name, stocks]) => ({ name, stocks }));
-  }, [visibleStocks]);
+  }, [activeBoard, query]);
 
   const watchlistItems = useMemo(() => {
     return Object.entries(watchlist)
@@ -475,9 +474,6 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
 
   const hotNews = useMemo(() => board.news || [], [board.news]);
 
-  const sidebarTrending = useMemo(() => board.stocks.slice(0, 5), [board.stocks]);
-  const sidebarGainers = useMemo(() => (topGainers || []).slice(0, 5), [topGainers]);
-
   const tickerStocks = useMemo(() => {
     const seen = new Set();
     const combined = [];
@@ -487,7 +483,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
       seen.add(stock.symbol);
       combined.push(stock);
     }
-    return combined;
+    return combined.slice(0, TICKER_SIZE);
   }, [board.stocks, topGainers, mostActives]);
 
   async function refreshBoard() {
@@ -694,8 +690,6 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
     <>
       <TopBar
         watchlistStocks={watchlistStocks}
-        topGainers={topGainers}
-        mostActives={mostActives}
         onStockSelect={loadStockRecommendation}
       />
       <main className="page-shell" id="top">
@@ -801,7 +795,7 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
           <div className="section-heading">
             <div>
               <p className="eyebrow">Today&apos;s board</p>
-              <h2>Trending stocks</h2>
+              <h2>{activeBoard ? activeBoard.label : "Market board"}</h2>
             </div>
             <p className="section-meta">
               Updated {new Date(board.fetchedAt).toLocaleString(undefined, {
@@ -813,93 +807,105 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
             </p>
           </div>
 
-          <div className="industry-groups">
-            {groupedStocks.map((group) => (
-              <section className="industry-group" key={group.name}>
-                <div className="industry-group-header">
-                  <h3>{group.name}</h3>
-                  <span className="industry-group-count">
-                    {group.stocks.length} {group.stocks.length === 1 ? "stock" : "stocks"}
-                  </span>
-                </div>
-                <div className="stock-grid">
-                  {group.stocks.map((stock) => {
-                    const isTracked = Boolean(watchlist[stock.symbol]);
-                    const tone = getChangeTone(stock.marketChangePercent);
+          {boardTabs.length > 1 && (
+            <div className="board-tabs" role="tablist" aria-label="Market lists">
+              {boardTabs.map((tab) => {
+                const isActive = activeBoard && activeBoard.id === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`board-tab${isActive ? " active" : ""}`}
+                    onClick={() => setBoardTab(tab.id)}
+                  >
+                    {tab.label}
+                    <span className="board-tab-count">{tab.stocks.length}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-                    function handleCardKeyDown(event) {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        loadStockRecommendation(stock);
-                      }
-                    }
+          <div className="stock-grid" role="tabpanel">
+            {visibleStocks.map((stock) => {
+              const isTracked = Boolean(watchlist[stock.symbol]);
+              const tone = getChangeTone(stock.marketChangePercent);
+              const groupLabel = stock.industry || stock.sector || null;
 
-                    return (
-                      <article
-                        className="stock-card"
-                        key={stock.symbol}
-                        onClick={() => loadStockRecommendation(stock)}
-                        onKeyDown={handleCardKeyDown}
-                        role="button"
-                        tabIndex={0}
-                        aria-label={`Open analysis for ${stock.symbol} ${stock.shortName}`}
+              function handleCardKeyDown(event) {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  loadStockRecommendation(stock);
+                }
+              }
+
+              return (
+                <article
+                  className="stock-card"
+                  key={stock.symbol}
+                  onClick={() => loadStockRecommendation(stock)}
+                  onKeyDown={handleCardKeyDown}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open analysis for ${stock.symbol} ${stock.shortName}`}
+                >
+                  <div className="stock-card-top">
+                    <div>
+                      <div className="stock-symbol-row">
+                        <span className="stock-rank">#{stock.rank}</span>
+                        <h3>{stock.symbol}</h3>
+                      </div>
+                      <p className="stock-name">{stock.shortName}</p>
+                    </div>
+
+                    {isAuthenticated ? (
+                      <button
+                        className={`track-button ${isTracked ? "tracked" : ""}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleWatchlist(stock.symbol);
+                        }}
                       >
-                        <div className="stock-card-top">
-                          <div>
-                            <div className="stock-symbol-row">
-                              <span className="stock-rank">#{stock.rank}</span>
-                              <h3>{stock.symbol}</h3>
-                            </div>
-                            <p className="stock-name">{stock.shortName}</p>
-                          </div>
+                        {isTracked ? "Tracking" : "Track"}
+                      </button>
+                    ) : (
+                      <Link
+                        href="/login"
+                        className="track-button"
+                        onClick={(event) => event.stopPropagation()}
+                        title="Sign in to add this stock to your watchlist"
+                      >
+                        Sign in
+                      </Link>
+                    )}
+                  </div>
 
-                          {isAuthenticated ? (
-                            <button
-                              className={`track-button ${isTracked ? "tracked" : ""}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                toggleWatchlist(stock.symbol);
-                              }}
-                            >
-                              {isTracked ? "Tracking" : "Track"}
-                            </button>
-                          ) : (
-                            <Link
-                              href="/login"
-                              className="track-button"
-                              onClick={(event) => event.stopPropagation()}
-                              title="Sign in to add this stock to your watchlist"
-                            >
-                              Sign in to track
-                            </Link>
-                          )}
-                        </div>
+                  <div className="price-row">
+                    <strong>{formatMoney(stock.regularMarketPrice)}</strong>
+                    <span className={`change-pill ${tone}`}>
+                      {formatPercent(stock.marketChangePercent)}
+                    </span>
+                  </div>
 
-                        <div className="price-row">
-                          <strong>{formatMoney(stock.regularMarketPrice)}</strong>
-                          <span className={`change-pill ${tone}`}>
-                            {formatPercent(stock.marketChangePercent)}
-                          </span>
-                        </div>
+                  <div className="metric-row">
+                    <div>
+                      <span>Volume</span>
+                      <strong>{formatCompact(stock.regularMarketVolume)}</strong>
+                    </div>
+                    <div>
+                      <span>Day range</span>
+                      <strong>
+                        {formatMoney(stock.regularMarketDayLow)} - {formatMoney(stock.regularMarketDayHigh)}
+                      </strong>
+                    </div>
+                  </div>
 
-                        <div className="metric-row">
-                          <div>
-                            <span>Volume</span>
-                            <strong>{formatCompact(stock.regularMarketVolume)}</strong>
-                          </div>
-                          <div>
-                            <span>Day range</span>
-                            <strong>
-                              {formatMoney(stock.regularMarketDayLow)} - {formatMoney(stock.regularMarketDayHigh)}
-                            </strong>
-                          </div>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
+                  {groupLabel ? <p className="stock-sector">{groupLabel}</p> : null}
+                </article>
+              );
+            })}
           </div>
         </div>
 
@@ -1019,60 +1025,6 @@ export default function StockDashboard({ initialData, topGainers = [], mostActiv
           )}
 
         </aside>
-
-        {(sidebarTrending.length > 0 || sidebarGainers.length > 0) && (
-          <aside className="lists-column">
-            {sidebarTrending.length > 0 && (
-              <section className="sidebar-list-section">
-                <div className="sidebar-list-header">
-                  <h3>Trending</h3>
-                  <span className="sidebar-list-meta">Top {sidebarTrending.length}</span>
-                </div>
-                <div className="sidebar-stock-list">
-                  {sidebarTrending.map((stock) => (
-                    <button
-                      key={stock.symbol}
-                      type="button"
-                      className="sidebar-stock-row"
-                      onClick={() => loadStockRecommendation(stock)}
-                    >
-                      <span className="sidebar-stock-symbol">{stock.symbol}</span>
-                      <span className="sidebar-stock-name">{stock.shortName}</span>
-                      <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
-                        {formatPercent(stock.marketChangePercent)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {sidebarGainers.length > 0 && (
-              <section className="sidebar-list-section">
-                <div className="sidebar-list-header">
-                  <h3>Top Gainers</h3>
-                  <span className="sidebar-list-meta">Top {sidebarGainers.length}</span>
-                </div>
-                <div className="sidebar-stock-list">
-                  {sidebarGainers.map((stock) => (
-                    <button
-                      key={stock.symbol}
-                      type="button"
-                      className="sidebar-stock-row"
-                      onClick={() => loadStockRecommendation(stock)}
-                    >
-                      <span className="sidebar-stock-symbol">{stock.symbol}</span>
-                      <span className="sidebar-stock-name">{stock.shortName}</span>
-                      <span className={`sidebar-stock-change ${getChangeTone(stock.marketChangePercent)}`}>
-                        {formatPercent(stock.marketChangePercent)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-          </aside>
-        )}
       </section>
 
       {selectedStock && (

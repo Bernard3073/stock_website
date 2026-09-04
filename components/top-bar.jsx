@@ -79,7 +79,7 @@ function StockDropdownRow({ stock, onSelect }) {
   );
 }
 
-export function TopBar({ watchlistStocks, topGainers, mostActives, onStockSelect }) {
+export function TopBar({ watchlistStocks, onStockSelect }) {
   const { data: session, status } = useSession();
   const [openMenu, setOpenMenu] = useState(null);
   const [theme, setTheme] = useState("light");
@@ -124,24 +124,14 @@ export function TopBar({ watchlistStocks, topGainers, mostActives, onStockSelect
     onStockSelect?.(stock);
   }
 
+  // Gainers and Most Active live on the board as tabs; the top bar only keeps
+  // the watchlist, which is worth reaching while scrolled away from its column.
   const sections = [
     {
       key: "watchlist",
       label: "Watchlist",
       stocks: watchlistStocks || [],
       emptyMessage: "Track stocks from the board to fill your watchlist."
-    },
-    {
-      key: "gainers",
-      label: "Top Gainers",
-      stocks: topGainers || [],
-      emptyMessage: "No gainers available right now."
-    },
-    {
-      key: "actives",
-      label: "Most Active",
-      stocks: mostActives || [],
-      emptyMessage: "No active stocks available right now."
     }
   ];
 
@@ -153,7 +143,7 @@ export function TopBar({ watchlistStocks, topGainers, mostActives, onStockSelect
           Market Current
         </a>
 
-        <nav className="top-bar-nav" aria-label="Stock categories">
+        <nav className="top-bar-nav" aria-label="Saved stocks">
           {sections.map((section) => {
             const isOpen = openMenu === section.key;
             return (
